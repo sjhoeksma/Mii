@@ -1,0 +1,32 @@
+{
+  "name": "com.miiapp",
+  "private": "true",
+  "devDependencies": {
+    "ionic": "driftyco/ionic-bower#1.3.1",
+    "plugin": "^4.0.0"
+  },
+  "dependencies": {
+    "angular-translate": "^2.12.1",
+    "angular-translate-loader-static-files": "^2.12.1",
+    "angular-translate-loader-partial": "^2.12.1",
+    "crypto-js": "^3.1.7",
+    "ngCordova": "^0.1.27-alpha",
+    "ion-datetime-picker": "^0.4.0",
+    "Idle.Js": "idle.js#^1.0.0",
+    "leaflet": "Leaflet#^1.0.1",
+    "ionic-gizmos": "https://github.com/sjhoeksma/ionic-gizmos.git",
+    "nz-tour": "https://github.com/semos/nzTour.git",
+    "ionic-select-control": "^1.8.0",
+    "localforage": "^1.4.3",
+    "angular-localforage": "^1.3.1",
+    "localforage-sessionstoragewrapper": "https://github.com/localForage/localForage-sessionStorageWrapper.git#^1.1.0",
+    "adal-angular": "^1.0.12",
+    "angular-formly": "^8.4.0",
+    "angular-mocks": "1.5.x",
+    "owl.carousel": "^2.2.0",
+    "angular-cookies": "^1.6.2"
+  },
+  "resolutions": {
+    "angular": "1.5.x"
+  }
+}

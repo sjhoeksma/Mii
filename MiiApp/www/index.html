@@ -1,0 +1,145 @@
+<html ng-app="framework">
+  <head>
+		<!-- Security Policy -->
+		<meta http-equiv="Content-Security-Policy"
+					content="default-src 'self'
+									 ;
+									 connect-src 'self' 'unsafe-inline'
+									             file:
+									             localhost:*
+									 						 ws://localhost:*
+									             https://*.azurewebsites.net
+									             https://*.microsoftonline.com
+									             https://*.office.com
+									             
+									 					 	 ws://192.168.1.3:*
+									             ws://10.0.0.130:*
+									 ;
+									 script-src 'self' 'unsafe-inline' 'unsafe-eval'
+									             file:
+									             localhost:*
+									 
+									 						 192.168.1.3:*
+									 						 10.0.0.130:*
+									 ;
+									 child-src   'self' 'unsafe-inline'
+									             localhost:*
+									             gap://ready
+									             https://*.azurewebsites.net
+									             https://*.office.com
+									 ;
+									 style-src  'self' 'unsafe-inline'
+									             localhost:*
+									 ;
+									 img-src     'self'
+									              data: 
+									              blob: 
+									              file:
+									 ;
+		">
+	
+	  <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no, width=device-width">
+		<link rel="shortcut icon" href="img/favicon.ico">  
+		<meta name="format-detection" content="telephone=no">
+    <!-- no auto telephone linking -->
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- can be saved to home screen on ios -->
+    
+		<title></title> 
+		<!-- build:css css/vendor.css -->
+    <!-- bower:css -->
+		   <link href="lib/owl.carousel/dist/assets/owl.carousel.css" rel="stylesheet" />
+		   <link href="lib/ion-datetime-picker/release/ion-datetime-picker.min.css" rel="stylesheet" />  
+       <link href="lib/nz-tour/dist/nz-tour.css" rel="stylesheet" />  
+			 <link href="lib/ionic-select-control/dist/SelectBox.min.css" rel="stylesheet" />
+		<!-- endbower -->
+    <!-- endbuild -->
+		
+		<!-- build:css css/app.css -->
+    <!-- inject:css -->
+		  <link href="css/ionic.app.css" rel="stylesheet" />
+		<!-- endinject -->
+    <!-- endbuild -->
+				
+	<!-- build:js js/vendor.js -->
+	<!-- bower:js -->
+		<script src="lib/ionic-gizmos/ionic/js/ionic.bundle.js"></script>
+		<script src="lib/angular-cookies/angular-cookies.min.js"></script>
+		<script src="lib/ionic-gizmos/item-swipe-pane/item-swipe-pane-directive.js"></script>
+		<script src="lib/ionic-gizmos/can-swipe/can-swipe-directive.js"></script>
+		<script src="lib/ionic-gizmos/long-swipe/long-swipe-directive.js"></script>
+		<script src="lib/ionic-gizmos/click-swipe/click-swipe-directive.js"></script>
+		<script src="lib/ion-datetime-picker/release/ion-datetime-picker.min.js"></script>
+		<script src="lib/nz-tour/dist/nz-tour.js"></script>
+		<script src="lib/angular-translate/angular-translate.js"></script>
+		<script src="lib/angular-translate-loader-static-files/angular-translate-loader-static-files.js"></script>
+		<script src="lib/angular-translate-loader-partial/angular-translate-loader-partial.js"></script>   
+		<script src="lib/ionic-select-control/dist/SelectBox.min.js"></script>
+		<script src="lib/Idle.Js/build/idle.js"></script>
+	 	<script src="lib/localforage/dist/localforage.js"></script>
+	  <script src="lib/angular-localforage/dist/angular-localForage.js"></script>
+	  <script src="lib/localforage-sessionstoragewrapper/src/localforage-sessionstoragewrapper.js"></script>
+	  <script src="lib/api-check/dist/api-check.js"></script>
+	  <script src="lib/angular-formly/dist/formly.js"></script>
+		<script src="lib/crypto-js/crypto-js.js"></script>
+	 	<script src="lib/ngCordova/dist/ng-cordova.js"></script>
+		<!-- We only use adal not angular-adal -->
+		<script src="lib/adal-angular/lib/adal.js"></script>
+		
+	   <!-- Can we live without owl.carousel because it requires jquery -->
+	  <script src="lib/jquery/dist/jquery.js"></script>
+	  <script src="lib/owl.carousel/dist/owl.carousel.js"></script>
+	 
+	<!-- endbower -->
+	<!-- endbuild -->
+		
+	<!-- Cordova will be loaded during compile -->
+	<script src="cordova.js"></script>
+
+	<!-- build:js js/app.js -->
+	<!-- inject:js -->
+		 <script src="js/javascript.Extentions.js"></script>
+	   <script src="js/config.js"></script>
+		 <script src="js/framework.js"></script>
+
+	   <!-- Directives -->
+		 <script src="js/directive.Common.js"></script>
+	   <script src="js/directive.GridMenu.js"></script>
+	   <script src="js/directive.IonKeyPad.js"></script>
+	   <script src="js/directive.IonSearchSelect.js"></script>
+	   <script src="js/directive.MenuTree.js"></script>
+	 
+	
+		<!-- Services / Providers -->
+	   <script src="js/provider.LoadOnDemand.js"></script>
+	   <script src="js/provider.ADAL.js"></script>
+	   <script src="js/provider.SecureStorage.js"></script>
+	   <script src="js/provider.SyncQueue.js"></script>
+		 <script src="js/provider.ContentSync.js"></script>
+		 <script src="js/provider.FilePicker.js"></script>
+	 	 <script src="js/service.AppUser.js"></script>
+	 	 <script src="js/service.Notifications.js"></script>
+	   <script src="js/service.IdleStateTimer.js"></script>
+	 	 <script src="js/service.NetworkMonitor.js"></script>
+	<!-- endinject -->
+	<!-- endbuild --> 
+	
+ </head>
+
+ <body class="base-theme" ng-class="appTheme!='base-theme' ? appTheme : ''"> 
+	 
+
+	 
+  <!-- Standard IONIC navigation bar --> 
+  <ion-nav-bar class="bar-positive">
+    <ion-nav-back-button>
+    </ion-nav-back-button>
+  </ion-nav-bar>
+  <!-- Standard IONIC view -->  
+  <ion-nav-view></ion-nav-view> 
+     
+  </body>
+</html>
+

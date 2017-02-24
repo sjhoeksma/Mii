@@ -1,0 +1,14 @@
+<ion-popover-view class="popover-view" style="height:225px;" > 
+		<ion-header-bar class="bar bar-deepblue bar-deepblue-borderbottom" align-title="center">
+		<h2 class="title ">Id:{{popoverData.id}} Time:{{popoverData.fmtTime}}</h2>
+	</ion-header-bar>
+   <ion-content >
+		  <button ng-show="popoverData.state>=200 && popoverData.state<205" class="button button-block button-positive input-button" ng-click="doDSQ()">Disqualification</button>
+		 
+		  <button ng-show="popoverData.state>=200 && popoverData.state<205 && inDeviceList()" class="button button-block button-positive input-button" ng-click="doNoFinish()">Reopen</button>
+		  <button ng-show="popoverData.state>205" class="button button-block button-positive input-button" ng-click="doFixFinish()">Restore Time</button> 
+		  <button ng-show="popoverData.state<254"class="button button-block button-positive input-button" ng-click="doRemove()">Remove</button>
+		  <button ng-show="popoverData.state<254" class="button button-block button-positive input-button" ng-click="doChangeUser()">Change User</button>
+		 
+	</ion-content>
+</ion-popover-view>

@@ -1,0 +1,15 @@
+{
+	  "FRW_REMOVE"        : "Remove",
+	  "FRW_HOME"				  : "Home",
+	  "FRW_TOUR"					: "Tour",
+	  "FRW_ADD"           : "Add",
+	  "FRW_CONTINUE"      : "Continue",
+	  "FRW_YES"           : "Yes",
+	  "FRW_NO"            : "No",
+	  "FRW_LOCK"					: "Lock",
+	  "FRW_LOGOUT"				: "Logout",
+    "FRW_WAIT"					: "Please wait...",
+	  "FRW_UNAUTHORIZED"	: "Your not authorized for : {{SecurityGroup}} ",
+	  "FRW_EXIT_APP"      : "Do you really want to exit app",
+	  "FRM_LOGIN_OFFLINE" : "Cannot login while offline"
+}

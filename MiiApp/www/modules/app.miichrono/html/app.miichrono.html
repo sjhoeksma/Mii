@@ -1,0 +1,68 @@
+<ion-view view-title="{{sessionTime()}}" class="miichrono" hide-back-button="true" ng-init="init()">
+	  <ion-nav-buttons side="right">
+			<button ng-click="connect()" ng-if="Mii.state==0 && Mii.settings.bluetoothid" class="button button-clear icon ion-flash-off red-color"></button>
+			<button ui-sref="app.miichrono-settings" ng-if="Mii.state==0 && !Mii.settings.bluetoothid" class="button button-clear icon ion-gear-a"></button>
+			<button ui-sref="app.miichrono-settings" ng-if="Mii.state>=1" class="button button-clear icon ion-flash" ng-class="Mii.state <= 2 ? 'dodgerblue-color' : 'white-color' "></button>
+    </ion-nav-buttons>
+	
+    <ion-content overflow-scroll="true" >
+		<ion-list class="list">
+	   <ion-item class="item darkblue-bgcolor no-padding border-none" 
+	                      ng-class="{active: isGroupShown('G2')}">
+			<div class="row digitaluser" ng-click="changeUser()"> 
+				<div class="col col-15 text-right">{{Mii.freezeRec.id ? Mii.freezeRec.id : Mii.activeList[0] ? Mii.activeList[0].id : "&nbsp;"}}</div>
+				<div class="col text-left" >{{Mii.freezeRec.id ? Mii.freezeRec.fmtName : Mii.activeList[0] ? Mii.activeList[0].fmtName :"&nbsp;"}}</div>
+				<div class="col text-right white-color" ng-if="Mii.settings.showonstart">{{nextOnStart()}}</div>
+				<div class="col text-right white-color" style="cursor:pointer;max-width:20vw;" ><span ng-class="{'red-color' : keyboardoptions.visible}">{{ keyboardoptions.visible ? nextUser : Mii.session.nextUser}}</span>/{{Mii.session.activeCount}}</div>
+			</div>	
+ 	   <div class="digitalclock no-padding" ng-click="toggleGroup('G2')" ng-class="Mii.freezeRec.id && Mii.freezeRec.state<200 ? 'orange-color' : '' ">{{Mii.freezeRec.id ? Mii.freezeRec.fmtTime : Mii.activeList[0] ? Mii.activeList[0].fmtTime : "&nbsp;"}}</div>	
+
+   </ion-item>  
+</ion-list>
+    <ion-list class="list border-none" ng-show="isGroupShown('G2') && Mii.activeList.length">
+      <ion-item  ng-repeat="item in Mii.activeList"  class="item no-padding active-item" click-swipe long-swipe>
+				<div class="row">
+					<div class="col col-12 text-right">{{item.id}}</div>
+					<div class="col text-left " style="font-size: 0.9em;">{{item.fmtName}}</div>	
+					<div class="col digitalValue text-right" > {{item.fmtTime}}</div>	
+				</div>	
+				<item-swipe-pane ng-if="Mii.settings.expert" direction="left" ng-show="Mii.activeList.length">
+					 <button class="button button-assertive ion-trash-a" ng-click="doDNF(item)" translate>MIC_DNF</button>
+				</item-swipe-pane>
+	  </ion-item>
+	  
+    </ion-list>
+
+    <ion-list >
+	  <div class="item item-divider item-calm white-color" ng-click="toggleRank()" >
+			<span ng-show="rank==2">Start</span>
+		  <span ng-show="rank==1">Rank</span>
+	    <span ng-show="rank==0">Finish</span>
+	  </div>
+
+      <div ng-repeat="item in (correctContent = (Mii.resultsList | orderBy: resultSort))"  ng-if="(Mii.settings.showRemoved || item.state!=254)" >
+				<ion-item ng-if="rank==1 && correctContent[$index-1].fmtSort!=item.fmtSort && item.fmtSort" class="item-divider item-stable white-color" >
+					<span>{{item.fmtSort}}</span>
+				</ion-item>
+				<ion-item class="item no-padding" >
+				<div class="row no-padding">
+					<div class="col col-12 text-right">{{item.id}}</div>
+					<div class="col text-left" style="font-size: 0.9em;">{{item.fmtName}}</div>	
+					<div class="col digitalValue text-right" ng-class="{'orange-color': item.complete!==true}" >{{item.diff ? item.fmtDiff : ""}}</div>	
+				</div>	
+				<div  class="row no-padding">
+					<div class="col col-12 digitalValue text-right" style="font-size: 1.6em" >{{ item.state < 205 ? item.rank : "" }}
+					</div>
+					<div class="col digitalValue text-left" style="font-size: 1.6em;overflow-x: hidden;direction:rtl">
+						<span ng-repeat="result in item.results " ng-if="$index >= item.results.length-Mii.settings.maxVisibleResults && (Mii.settings.showRemoved || result.state!=254)" ng-click="changeResultRec(result,$event)" >{{result.fmtTime}}&nbsp;</span>
+					</div>	
+				</div>	
+	     </ion-item>
+		</div>			
+
+    </ion-list>
+
+  </ion-content>
+			
+	 <ion-key-pad class="transparent flat slide"  options="keyboardoptions"></ion-key-pad>		
+</ion-view>

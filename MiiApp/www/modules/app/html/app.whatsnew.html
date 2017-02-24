@@ -1,0 +1,14 @@
+<ion-view view-title="{{'APP_WHATS_NEW' | translate:translateData}}" hide-back-button="true">
+  <ion-nav-buttons side="left">
+		<button class="button button-clear button-top-menu icon ion-log-in" 
+		 ui-sref="{{ $root.homeState || 'app.home'}}"><br>{{'FRW_CONTINUE' | translate:translateData}}</button>
+	</ion-nav-buttons>
+	<ion-nav-buttons side="secondary"></ion-nav-buttons>
+  <ion-content class="has-header full-height" scroll="true"  >
+    The following issues or functionality are resolved
+    <h2>V0.1.0</h2>
+    <ul>
+      <li>Startup framework</li>
+    </ul> 
+  </ion-content>
+</ion-view>  

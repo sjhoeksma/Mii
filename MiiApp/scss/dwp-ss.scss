@@ -1,0 +1,276 @@
+//Some new fonts
+@font-face {
+    font-family: VFHeadline;
+    src: url(fonts/VFHeadline.woff);
+}
+
+//-------- INCIDENT STYLE
+.submit {
+  text-align: center;
+  margin: 60px !important;
+  color: darkgreen;
+}
+.camera {
+  text-align: center;
+  font-size: 24px;
+}
+.item-report {
+  position: absolute !important;
+  bottom: 0;
+  width: 101%;
+  margin-right: -5px;
+  background-color: #ff9900 !important;
+  color: white !important;
+  text-align: center !important;
+  border: 1px solid #ff9900 !important;
+}
+.item-submit {
+  background-color: green !important;
+  position: absolute !important;
+  width: 51%;
+  text-align: center;
+  bottom: 0;
+  border: 1px solid green !important;
+  color: white !important;
+}
+.icon-report {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  font-size: 32px;
+}
+.icon-next {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  font-size: 32px;
+}
+.icon-prev {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  font-size: 32px;
+}
+.next {
+  background-color: #ff9900 !important;
+  position: absolute !important;
+  width: 51%;
+  text-align: center;
+  bottom: 0;
+  border: 1px solid #ff9900 !important;
+  color: white !important;
+}
+.prev {
+  background-color: #0085c7 !important;
+  border: 1px solid #0085c7 !important;
+  width: 50%;
+}
+.icon-next {
+  position: absolute;
+  top: 8px;
+  right: 25px;
+  font-size: 32px;
+}
+.checkbox-group {
+  background-color: transparent !important;
+}
+.divider-custom {
+  background-color: #0085c7 !important;
+  border: none !important;
+  color: white !important;
+}
+.item-radio input:checked + .radio-content .radio-icon {
+  color: #ff9900 !important;
+}
+.checkbox-energized input:checked:before, .checkbox-energized input:checked + .checkbox-icon:before {
+  background-color: #ff9900 !important;
+}
+.person {
+  font-size: 100px;
+  text-align: center;
+  margin-top: 30px;
+  color: #ff9900 !important;
+}
+
+.slider {
+  height: 100%;
+}
+.slider-slide {
+  padding-top: 80px;
+  color: #000;
+  background-color: #fff;
+  font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif; 
+  font-weight: 300;
+}
+//-------
+
+.feedback {
+	height: 15em;
+	width:100%;
+}
+
+
+.vf-theme { 
+  color: $dark-blue;
+  //Top Header
+	//.pane, .view, .popover-view, .popup-body, .popup-head, .popup-buttons,
+	.popup-head,
+	.tabbed-slidebox .tsb-icons,
+  .bar-positive {
+    background-color: $Vf_Orange !important ;
+    color: $Light_Grey !important;
+    border-bottom: 1px solid darken( $Vf_Orange, 10%) !important;
+    border-top: 1px solid darken( $Vf_Orange, 10%) !important;
+  }
+	
+	.label-required, .textarea-required, .item-required, .item-required h2 {
+		background-color: #e65c00!important;//darken($Vf_Orange,3%) !important;
+		border-color:    #e65c00!important ;//darken($Vf_Orange,3%) !important;
+		color: $white;
+	}
+
+	.badge .grid__item {
+		background: transparent;
+	}
+	.badge .grid__item::before {border: none;} 
+	.badge .grid__item:hover {border:none;}
+	.badge .grid__item:focus::before { border: none;}
+	.badge .grid__item .title {
+		width: 60px;
+		text-align: center;
+		font-size: 0.8em;
+	}
+	
+	.popup-title{
+		color: white !important;
+	}	
+  
+  .placeholder,.grid__item {
+    color: white;
+    background: $white;
+	  font-size: 13px;
+	  line-height: 1.2;
+	  color: $dark-blue
+  }
+  //Background of Content and Slider
+  .modal .gallery-item , ion-slide,  ion-content {
+    background-color: $Bg_Gray !important;
+  }
+  
+  //Restore the list-style of number list
+  ol {list-style: decimal ;}
+  
+  //The headline header
+  h1 {
+    font-family: VFlHeadline;
+    font-size: 48px;
+	  text-align: center;
+	  color: $dark-blue;
+  }
+  
+  //Orange key pad as default
+  .ion-key-pad .key {background-color: $Vf_Orange;color: $Light_Grey;};
+  .ion-key-pad .key:hover {color: darken($Vf_Orange,20%);}
+  .ion-key-pad .key.control-key {background-color: $Button_Orange;}
+  .ion-key-pad .key.activated {background-color:  $Button_Orange;}
+  .ion-key-pad .control-key.activated {background-color: $Vf_Orange;}
+  .ion-key-pad .ion-key-pad-top-bar {background-color: $Vf_Orange;}
+  .ion-key-pad .ion-key-pad-top-bar button {color: $Light_Grey;}
+  
+  //The menu tree
+  .menu-tree .item-menu-1, .menu-tree .item-menu-2, .menu-tree .item-menu-3{
+    background: $Vf_Orange;}
+  .menu-tree .active {background: lighten($Vf_Orange,20%);}
+  .menu-tree .item-menu-1:hover,.menu-tree .item-menu-2:hover,.menu-tree .item-menu-3:hover {background-color: darken($Vf_Orange,20%) !important}
+	
+
+} 
+
+	.inAppBrowserWrap {
+		background-color: $Vf_Orange;//rgba(0,0,0,0.75);
+		color: rgba(235,235,235,1.0);
+	}
+	.inAppBrowserWrap menu {
+		overflow: auto;
+		list-style-type: none;
+		padding-left: 0;
+	}
+	.inAppBrowserWrap menu li {
+		font-size: 25px;
+		height: 25px;
+		float: left;
+		margin: 0 10px;
+		padding: 3px 10px;
+		text-decoration: none;
+		color: #ccc;
+		display: block;
+		background: rgba(30,30,30,0.50);
+	}
+	.inAppBrowserWrap menu li.disabled {
+			color: #777;
+	}
+// Some custom code
+body {cursor: url('../img/finger.png'), auto;}
+
+
+/* Problem is the background seems not to work, thereforo border-bottom instead of border:none */
+.passcode .row .circle-box  { 
+    border-bottom : 1px solid black;
+    /*
+    background : linear-gradient(#fff, #fff), linear-gradient(#fff, #fff), linear-gradient(#000, #000);
+    background-size: 1px 20%, 100% 1px, 1px 20%;
+    background-position: bottom left, bottom center, bottom right;
+    background-repeat: no-repeat;*/
+    padding: 8px;
+    margin: 2px 20px;
+    min-height: 37px;
+}
+
+.passcode .row .col .circle {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    -webkit-border-radius: 50%;
+    background-color: #000;
+    margin: auto;
+}
+
+@media screen and (max-width: 400px) {
+	.passcode .row .pin6,
+	.passcode .row .pin5  { 
+    padding: 4px;
+    margin: 2px 10px;
+  }
+	.passcode .row .col .pin6,
+	.passcode .row .col .pin5 {
+    height: 15px;
+    width: 15px;
+  }
+}
+
+//The Title
+.button-top-menu  {
+	margin-top: 4px;
+	max-width: 60px; 
+  font-size: 10px!important;
+  line-height: 9px!important; // Add
+}
+
+//The Icon
+.button-top-menu:before  {
+	font-size: 23px!important;
+	line-height: 18px!important;
+}
+
+//The Title
+.button-bottom-menu  {
+	margin-top: 4px;
+  font-size: 10px!important;
+  line-height: 9px!important; // Add
+}
+
+//The Icon
+.button-bottom-menu:before  {
+	font-size: 23px!important;
+	line-height: 18px!important;
+}

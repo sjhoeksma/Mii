@@ -1,0 +1,22 @@
+<div class="modal modal-full" >
+	<ion-header-bar  class="bar bar-header bar-positive">
+     <div class="title header-item" >{{'APP_NEW_PIN_FOR' | translate:translateData}}&nbsp;{{AppUser.lastUserName()}}</div>
+  </ion-header-bar>
+  <ion-content >
+    <div class="passcode" >
+			<span>{{'APP_ENTER_NEW_PIN' | translate:translateData}}&nbsp;<b class="red-color">{{reason | translate:translateData}}</b></span>
+       <div class="row"> 
+        <div class="col circle-box" ng-class="('pin'+pinCount)" ng-repeat="n in range(1,pinCount)" >
+          <div class="circle" ng-class="('pin'+pinCount)  + ' ' + (valid ?'':'red-bgcolor')" ng-show="passcode.length >= n"></div>
+        </div>
+       </div>
+				<span>{{'APP_VERIFY_PIN' | translate:translateData}}</span> 
+       <div class="row"> 
+			 <div class="col circle-box" ng-class="('pin'+pinCount)" ng-repeat="n in range(1,pinCount)" >
+          <div class="circle" ng-class="('pin'+pinCount) + ' ' + (pinCompare(n) ?'':'red-bgcolor')" ng-show="passcode.length >= pinCount+n"></div>
+        </div>
+       </div>
+    </div>
+  </ion-content>
+	 <ion-key-pad class="flat"  options="newpinkey"></ion-key-pad>
+</div>  

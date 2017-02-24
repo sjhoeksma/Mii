@@ -1,0 +1,51 @@
+ <ion-view view-title="{{'APP_SETTINGS' | translate:translationData}}" >
+     <ion-content scroll="true"  >
+      <ion-list>
+       <ion-item class="item-divider item-positive" translate>APP_GENERAL</ion-item>
+       <ion-toggle ng-if="isDemo" ng-model="$root.isOnline" toggle-class="toggle-calm" >{{ 'APP_FORCE_ONLINE' | translate }}</ion-toggle>
+			<ion-item ng-if="isDemo" class="item item-icon-right">
+				   {{ 'APP_STARTUP_FLAG' | translate }}
+				   <i class="icon">
+				   <button class="button button-assertive" ng-click="resetStartup()" translate>
+					 APP_RESET
+           </button>
+				 </i>	 
+       </ion-item>	
+	     <ion-toggle ng-if="isDemo" ng-model="$root.isAdmin" toggle-class="toggle-calm" ng-click="refreshSecurityGroup()" >{{'APP_SIMULATE_ADMIN' | translate}}</ion-toggle>
+       <ion-item class="item item-icon-right" ng-if="themeChangeable">
+				   {{ 'APP_THEME' | translate }}
+				   <i class="icon">
+				   <select-box ng-header-class="bar bar-positive" ng-Selected-Value="$root.appTheme" 
+                ng-Item-Name="name" 
+                ng-Item-Id="theme" 
+                ng-title="{{ 'APP_THEME_SELECT' | translate }}" 
+                ng-data="themes" 
+                ng-placeholder="{{ 'APP_THEME_PLACEHOLDER' | translate }}"
+                >
+           </select-box>
+				 </i>	 
+       </ion-item>
+			 <ion-item class="item item-icon-right" ng-if="languageChangeable">
+				   {{ 'APP_LANGUAGE' | translate }}
+				   <i class="icon">
+				   <select-box ng-header-class="bar bar-positive" ng-Selected-Value="$root.uLang" 
+                ng-Item-Name="name" 
+                ng-Item-Id="language" 
+                ng-title="{{ 'APP_LANGUAGE_SELECT' | translate }}" 
+                ng-data="languages" 
+                ng-placeholder="{{ 'APP_LANGUAGE_SYSTEM' | translate }}"
+                >
+           </select-box>
+				 </i>	 
+       </ion-item>
+			 <ion-item class="item-divider item-positive" translate>APP_MODULES</ion-item>	
+			 <ion-item class="item item-icon-left item-icon-right" ng-repeat="setting in settings" ng-show="isValidSetting(setting)" ui-sref="{{setting.state}}" >
+				 <i class="icon" >
+					  <img class="small-avatar" ng-if="setting.icon" ng-src="{{setting.icon}}" alt="">
+				 </i>
+            {{setting.title | translate:translationData}}
+          <i class="icon ion-chevron-right"></i>
+				</ion-item>
+		  </ion-list>
+    </ion-content>
+   </ion-view>  

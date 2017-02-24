@@ -1,0 +1,22 @@
+ <ion-view view-title="{{ 'APP_NOTIFICATIONS' | translate:translateData}}" can-swipe-back="false"> 
+    <ion-content direction="y"> 
+		<ion-list>	
+			<ion-item ng-if="isDemo">
+		 <button class="button button-positive" ng-click="addMsg()" >APP_ADD_MSG</button>	
+		 </ion-item>
+			<ion-item ng-if="Notifications.list().length==0">{{ 'APP_NO_NOTIFICATIONS' | translate:translateData}}</ion-item>
+			<ion-item ng-repeat="item in Notifications.list() track by $index" can-swipe="true" ng-class="!item.readTime && item.insertTime>(Notifications.readTime()) ? 'red-color' : !item.readTime ? 'green-color' : ''" ng-dblclick="doubleClick(item)" long-swipe click-swipe>
+				{{item.msg}} {{item.insertTime>Notifications.readTime() }} - {{item.insertTime}} - {{Notifications.readTime()}}
+					<item-swipe-pane direction="right">
+						<button class="button button-assertive ion-trash-a" ng-click="delete($index)"  translate>FRW_REMOVE</button>
+					</item-swipe-pane>
+
+					<item-swipe-pane class="left-pane" >
+						<button class="button button-balanced ion-eye" ng-click="read($index)" ng-show="!item.readTime" translate>APP_READ</button>
+						<button class="button button-energized ion-eye-disabled" ng-click="unread($index)" ng-show="item.readTime" translate>APP_UNREAD</button>
+						
+					</item-swipe-pane>
+			</ion-item>
+			</ion-list>	
+    </ion-content>
+   </ion-view> 

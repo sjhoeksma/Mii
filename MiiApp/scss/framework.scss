@@ -1,0 +1,167 @@
+/* This style sheet contains extentions not part of IONIC */
+/* Easy Colors */
+.white-color{color: white !important;}
+.white-bgcolor{background-color: white !important;}
+.green-color{color: green !important;}
+.green-bgcolor{background-color: green !important;}
+.greenyellow-color{color: greenyellow !important;}
+.greenyellow-bgcolor{background-color: greenyellow !important;}
+.yellow-color{color: yellow !important;}
+.yellow-bgcolor{background-color: yellow !important;}
+.gray-color{color: gray !important;}
+.gray-bgcolor{background-color: gray !important;}
+.dodgerblue-color{color: dodgerblue !important;}
+.dodgerblue-bgcolor{background-color: dodgerblue !important;}
+.blue-color{color: blue !important;}
+.blue-bgcolor{background-color: blue !important;}
+.red-color{color: red !important;}
+.red-bgcolor{background-color: red !important;}
+.orange-color{color: orange !important;}
+.orange-bgcolor{background-color: orange !important;}
+.black-color{color: black !important;}
+.black-bgcolor{background-color: black !important;}
+.darkblue-color {color: #325480 !important;}
+.darkblue-bgcolor {background-color: #325480 !important;}
+
+.no-padding {
+	padding: 0px !important;
+}
+
+.no-border, .border-none {
+	border-width: 0px!important;
+}
+
+/* Quick fix for some issues with scrollers */
+div.spacer{font-size: 0; height: 50px;line-height: 0;background-color:transparent;}
+
+/* Handy class to fit image size to scale */
+.scale-image { max-width:100%;max-height:100%;}
+
+/* A red badge */ 
+.black-bagde, .blue-badge, .green-badge, .red-badge{
+  background: black !important;
+  color: white;
+  position:relative !important;
+  z-index:1000; 
+  display:inline-block !important; 
+  min-width:24px; 
+  height:24px; 
+  border:solid white 1px; 
+  border-radius:24px; 
+  text-align:center; 
+  line-height:20px; 
+  font-weight:bold; 
+  font-size:12px;
+  margin-left:-14px !important; 
+  top:-4px; 
+}
+
+.red-badge {
+   background: red !important;
+}
+.blue-badge {
+   background: blue !important;
+}
+.green-badge {
+   background: green !important;
+}
+
+.black-badge-large, .blue-badge-large, .green-badge-large, .red-badge-large {
+    display: block;
+	  position:relative !important;
+	  top:-10px;
+    height: 60px;
+    width: 60px;
+    line-height: 60px;
+    -moz-border-radius: 30px;
+    border-radius: 30px;
+    text-align: center;
+    font-size: 2em;
+    background-color: black;
+    color: white;
+	  margin-left: auto;
+    margin-right: auto;	
+}
+
+.red-badge-large {
+   background: red !important;
+}
+.blue-badge-large {
+   background: blue !important;
+}
+.green-badge-large {
+   background: green !important;
+}
+
+/* Text extenstions */
+.text-uppercase {text-transform: uppercase;}
+.text-lowercase {text-transform: lowercase;}
+.text-capitalize {text-transform: capitalize;}
+
+/* Fullheight 100% */
+.full-height {height:100%;min-height:10%;}    
+.full-height > .scroll{height:100%;min-height:10%;} 
+
+/* Pointer cursor */
+.pointer{cursor:pointer;}
+
+/* Floats */
+.float-left {float: left;}
+.float-right{float: right;}
+
+/* remove the padding */
+.no-padding {padding: 0 !important;}
+
+/* Borders */
+.white-border-4px {border: solid white 4px;}  
+.white-border-2px {border: solid white 2px;} 
+
+/* Avatars */
+.large-avatar  {height: 100px;width: 100px;border-radius: 100%;margin: 1px;}
+.bigger-avatar {height:90px!important;width:90px!important;border-radius:100%;margin:1px;}
+.normal-avatar {height:60px!important;width:60px!important;border-radius:100%;margin:1px;}
+.small-avatar  {height: 35px;width: 35px;border-radius: 100%;margin: 1px;}
+.title-avatar  {margin-top: 8px;height: 27px;}
+
+
+/* Ionic item alignment is default centre */
+ion-item {text-align:left;}
+
+/* Add some additional row and col handling */
+.col-12 {@include flex(0, 0, 12%);max-width:12%;}
+
+.col-15 {@include flex(0, 0, 15%);max-width:15%;}
+
+@media (min-width: 680px) {
+  .modal-full {
+    top: 0px !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+  }
+  .platform-ios.platform-cordova .modal-wrapper .modal-full .bar-header:not(.bar-subheader) > * {
+    margin-top: 20px;
+  }
+  .platform-ios.platform-cordova .modal-wrapper .modal-full .bar-header:not(.bar-subheader) {
+    height: 64px;
+  }
+  .platform-ios.platform-cordova .modal-wrapper .modal-full .has-header,
+  .platform-ios.platform-cordova .modal-wrapper .modal-full .bar-subheader {
+    top: 64px;
+  }
+}
+
+
+.webpage-iframe {
+	width:100%;
+	height:100%;
+	border:0px;
+	padding:0em;
+	color:red;
+	text-align: center;
+	vertical-align: middle;
+  background:url(../img/loading.gif) center center no-repeat;
+ }
+
+

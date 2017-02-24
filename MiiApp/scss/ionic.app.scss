@@ -1,0 +1,15 @@
+@charset "UTF-8";
+// The path for our ionicons font files, relative to the built CSS in www/css
+$ionicons-font-path: "../lib/ionic/fonts" !default;
+
+//Include the color schema's
+@import "variables";
+
+// Include all of Ionic
+@import "www/lib/ionic/scss/ionic";
+
+@import "framework";
+
+@import "dwp-ss";
+	
+@import "tobevalidated";

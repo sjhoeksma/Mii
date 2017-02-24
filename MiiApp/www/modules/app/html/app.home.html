@@ -1,0 +1,28 @@
+<ion-view view-title="<img class='title-avatar' src='{{imageLoc(appLogo,false)}}'/>" hide-back-button="true" can-swipe-back="false">
+  <ion-content scroll="false" has-header="true" >
+		<!-- The Application Grid is loaded by default -->
+		<ion-scroll class="full-height" >
+		 <div  id="grid-template" grid-basis >
+			 <div class="home-grid" ng-class="homePageStyle" back-to-grid back-state="{{$root.homeState || 'app.home'}}">
+				<section class="grid">
+				<a grid-state="{{item.state}}"  grid-params="{{item.params}}"  grid-title="{{item.title}}" grid-item class="grid__item" ng-repeat="item in userApps()" params-to-json="{{item.paramsToJson}}" grid-enabled="{{item.enabled}}"  >
+					<div ng-if="homePageStyle=='badge' && item.short" >
+					 <span ng-class="item.color ? item.color +'-badge-large' : 'black-badge-large'">{{item.short}}</span>
+						<div class="title" translate>{{item.title}}</div>
+				 </div>
+				 <div ng-if="item.icon && (homePageStyle=='icon' || !item.short)">
+					 <img ng-src="{{item.icon}}" class="full-image" />
+					 <div class="title title--preview" translate>{{ item.title}}</div>
+				 </div>
+				 <div ng-if="!item.icon && (homePageStyle=='icon' || !item.short)">
+					 <div class="title title--preview" translate>{{ item.title}}</div>
+					 <div class="loader" ></div>
+					 <div class="meta meta--preview" ng-bind-html="trustAsHtml(item.preview)"></div>
+				 </div>
+				</a>
+			 </section>
+		 </div>  
+		</div>
+	 </ion-scroll> 		
+ 	</ion-content>	
+</ion-view>

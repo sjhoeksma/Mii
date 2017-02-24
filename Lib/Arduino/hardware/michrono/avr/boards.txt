@@ -1,0 +1,142 @@
+# See: http://code.google.com/p/arduino/wiki/Platforms
+# For now code is in /Applications/Arduino.app/Contents/Resources/Java/hardware/arduino/avr
+# because platform code does not work
+miichrono.name=MiiChrono
+miichrono.vid.0=0x2341
+miichrono.pid.0=0x0043
+miichrono.vid.1=0x2341
+miichrono.pid.1=0x0001
+
+#Upload configuration
+miichrono.upload.tool=avrdude
+#miichrono.upload.protocol=arduino
+miichrono.upload.maximum_size=32256
+miichrono.upload.speed=115200
+#miichrono.upload.using=myisp
+
+#No boot loader just flags
+miichrono.bootloader.tool=avrdude
+miichrono.bootloader.low_fuses=0xFF
+miichrono.bootloader.high_fuses=0xD6
+miichrono.bootloader.extended_fuses=0x05
+miichrono.bootloader.unlock_bits=0x3F
+miichrono.bootloader.lock_bits=0x0F
+miichrono.bootloader.file=optiboot/optiboot_atmega328.hex
+miichrono.build.board=AVR_MIICHRONO
+miichrono.build.mcu=atmega328p
+miichrono.build.f_cpu=16000000L
+miichrono.build.core=arduino:arduino
+miichrono.build.variant=arduino:standard
+
+
+# because platform code does not work
+miibeacon.name=miibeacon
+miibeacon.vid.0=0x2341
+miibeacon.pid.0=0x0043
+miibeacon.vid.1=0x2341
+miibeacon.pid.1=0x0001
+
+#Upload configuration
+miibeacon.upload.tool=avrdude
+#miibeacon.upload.protocol=arduino
+miibeacon.upload.maximum_size=32256
+miibeacon.upload.speed=115200
+#miibeacon.upload.using=myisp
+
+#No boot loader just flags
+miibeacon.bootloader.tool=avrdude
+miibeacon.bootloader.low_fuses=0xE2
+miibeacon.bootloader.high_fuses=0xD6
+miibeacon.bootloader.extended_fuses=0x05
+miibeacon.bootloader.unlock_bits=0x3F
+miibeacon.bootloader.lock_bits=0x0F
+miibeacon.bootloader.file=MiiBoot/MiiBoot.hex
+miibeacon.build.board=AVR_MIICBEACON
+miibeacon.build.mcu=atmega328p
+miibeacon.build.f_cpu=8000000L
+miibeacon.build.core=arduino:arduino
+miibeacon.build.variant=arduino:standard
+
+
+miichrono8.name=miichrono8mHz
+miichrono8.vid.0=0x2341
+miichrono8.pid.0=0x0043
+miichrono8.vid.1=0x2341
+miichrono8.pid.1=0x0001
+
+#Upload configuration
+miichrono8.upload.tool=avrdude
+#miichrono8.upload.protocol=arduino
+miichrono8.upload.maximum_size=30720
+miichrono8.upload.speed=115200
+#miichrono8.upload.using=myisp
+
+#No boot loader just flags
+miichrono8.bootloader.tool=avrdude
+miichrono8.bootloader.low_fuses=0xFF
+miichrono8.bootloader.high_fuses=0xD2
+miichrono8.bootloader.extended_fuses=0x05
+miichrono8.bootloader.unlock_bits=0x3F
+miichrono8.bootloader.lock_bits=0x0F
+miichrono8.bootloader.file=MiiBoot/MiiBoot.hex
+miichrono8.build.board=AVR_MIICHRONO8
+miichrono8.build.mcu=atmega328p
+miichrono8.build.f_cpu=8000000L
+miichrono8.build.core=arduino:arduino
+miichrono8.build.variant=arduino:standard
+
+miichrono12.name=miichrono12mHz
+miichrono12.vid.0=0x2341
+miichrono12.pid.0=0x0043
+miichrono12.vid.1=0x2341
+miichrono12.pid.1=0x0001
+
+#Upload configuration
+miichrono12.upload.tool=avrdude
+#miichrono12.upload.protocol=arduino
+miichrono12.upload.maximum_size=30720
+miichrono12.upload.speed=115200
+#miichrono12.upload.using=myisp
+
+#No boot loader just flags
+miichrono12.bootloader.tool=avrdude
+miichrono12.bootloader.low_fuses=0xFF
+miichrono12.bootloader.high_fuses=0xD2
+miichrono12.bootloader.extended_fuses=0x05
+miichrono12.bootloader.unlock_bits=0x3F
+miichrono12.bootloader.lock_bits=0x0F
+miichrono12.bootloader.file=MiiBoot/MiiBoot12.hex
+miichrono12.build.board=AVR_MIICHRONO12
+miichrono12.build.mcu=atmega328p
+miichrono12.build.f_cpu=12000000L
+miichrono12.build.core=arduino:arduino
+miichrono12.build.variant=arduino:standard
+
+miibase.name=miibase8mHz
+miibase.vid.0=0x2341
+miibase.pid.0=0x0043
+miibase.vid.1=0x2341
+miibase.pid.1=0x0001
+
+#Upload configuration
+miibase.upload.tool=avrdude
+miibase.upload.maximum_size=32256
+miibase.upload.speed=115200
+
+#No boot loader just flags
+miibase.bootloader.tool=avrdude
+miibase.bootloader.low_fuses=0xFF
+miibase.bootloader.high_fuses=0xD2
+miibase.bootloader.extended_fuses=0x05
+miibase.bootloader.unlock_bits=0x3F
+miibase.bootloader.lock_bits=0x0F
+miibase.bootloader.file=MiiBoot/MiiBoot.hex
+miibase.build.board=AVR_MIICHRONO8
+miibase.build.mcu=atmega328p
+miibase.build.f_cpu=8000000L
+miibase.build.core=arduino:arduino
+miibase.build.variant=arduino:standard
+
+
+
+

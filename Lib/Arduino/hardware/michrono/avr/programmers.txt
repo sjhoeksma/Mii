@@ -1,0 +1,16 @@
+# See: http://code.google.com/p/arduino/wiki/Platforms
+myisp.name=External ISP
+myisp.communication=serial
+myisp.protocol=avrispv2
+myisp.program.protocol=avrispv2
+myisp.program.tool=avrdude
+myisp.program.speed=115200
+myisp.program.extra_params=-P{serial.port} -b{program.speed}
+
+
+esptool.name=esptool
+esptool.communication=serial
+esptool.protocol=esp
+esptool.program.protocol=esp
+esptool.program.tool=esptool.py
+esptool.program.extra_params=

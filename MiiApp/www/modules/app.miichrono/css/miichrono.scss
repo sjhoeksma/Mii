@@ -1,0 +1,12 @@
+@charset "UTF-8";
+//Include the color schema's
+@import "../../../../scss/variables";
+
+.miichrono {
+
+	.active-item .item-content {
+		padding-bottom: 2px;
+		padding-top: 2px;
+	}
+	
+}

@@ -1,0 +1,31 @@
+<ion-view view-title="Session Users">
+ <ion-content>
+<ion-list class="list border-none">
+	<ion-item class='item-divider item-calm no-padding no-border item-icon-right'>
+		Session Users {{sessionName}}
+		<i class="icon">
+		 <button class="button button-positive" ng-click="editUser()" translate>MIC_ADD
+		 </button>
+	 </i>	 
+	  <item-swipe-pane direction="right">
+				<button class="button button-assertive ion-trash-a" ng-click="removeSession()">remove</button>
+		</item-swipe-pane>
+		<item-swipe-pane direction="left">
+			<button class="button button-calm ion-close-circled" ng-click="resetSession()">reset</button>
+		</item-swipe-pane>
+	</ion-item>
+		<ion-item  ng-repeat="(key,usr) in Mii.users" ng-click="editUser(usr)" class="item no-padding active-item" long-swipe>
+			<div class="row no-padding">
+				<div class="col col-12 text-right">{{key}}</div>
+				<div class="col text-left ">{{ usr.name }}</div>
+				<div class="col text-right ">{{ (usr.group ? usr.group : "") + (usr.gender ? "("+usr.gender+") " : "")}}</div>
+			</div>	
+			<item-swipe-pane direction="left" >
+				 <button class="button button-assertive ion-trash-a" ng-click="removeUser(key)" >remove</button>
+			</item-swipe-pane>
+	  </ion-item>
+	
+	</ion-list>
+	
+  </ion-content>
+</ion-view>

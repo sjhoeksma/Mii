@@ -1,0 +1,20 @@
+<ion-view view-title="{{'APP_FEEDBACK' | translate:translateData}}" ng-init="showFeedback=false">
+  <ion-content class="has-header full-height" scroll="true"  >
+  <div ng-if="feedbackEmail">  
+  <p>Do you have a brilliant idea or suggestion to improve this App? We would like to hear it! With your feedback we will make the App better.</p>
+<button class="button button-block button-positive"  ng-click="showFeedback=true;" ng-show="!showFeedback">
+  Give your feedback
+</button>
+ <div ng-show="showFeedback">
+ <textarea class="feedback" type="text" auto-size="false" >
+ </textarea> 
+   <button class="button button-block button-positive" ng-click="goBack()" >
+     Send your feedback
+  </button>
+ </div>  
+</div> 
+   <div ng-if="!feedbackEmail"> 
+     <H1 class="red-color">No FeedbackEmail Configured</h1>
+   </div>  
+  </ion-content>
+</ion-view>  

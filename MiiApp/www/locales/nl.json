@@ -1,0 +1,14 @@
+{
+		"FRW_REMOVE"        : "Verwijder",
+	  "FRW_HOME"				  : "Thuis",
+	  "FRW_TOUR"					: "Tips",
+	  "FRW_ADD"           : "Toevoegen",
+	  "FRW_CONTINUE"      : "Doorgaan",
+	  "FRW_YES"           : "Ja",
+	  "FRW_NO"            : "Nee",
+	  "FRW_LOCK"					: "Vergrendel",
+	  "FRW_LOGOUT"				: "Log uit",
+    "FRW_WAIT"					: "Even wachten...",
+	  "FRW_UNAUTHORIZED"	: "U heeft onvoldoende rechten voor : {{SecurityGroup}} ",
+	  "FRW_EXIT_APP"      : "Weet u zeker dat u wilt afsluiten"
+}

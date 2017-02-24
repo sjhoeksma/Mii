@@ -1,0 +1,1 @@
+MiiBoot.o: MiiBoot.c

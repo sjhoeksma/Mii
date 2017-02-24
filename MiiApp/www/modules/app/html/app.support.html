@@ -1,0 +1,22 @@
+<ion-view view-title="{{'APP_FEEDBACK' | translate:translateData}}" ng-init="showSessionId=false">
+  <ion-content class="has-header full-height" scroll="true"  >
+ 
+<div ng-if="translationData.supportPhone">
+<p>A technical problem?
+For technical problems you can better directly contact us.</p>
+<button class="button button-block button-energized" href="tel:{{supportPhone}}">
+  Call us
+</button>
+ <button class="button button-block button-energized" ng-click="showSessionId=!showSessionId;remoteSupport(showSessionId)" >
+  Enable remote support
+</button> 
+ <div ng-show="showSessionId">
+   <h1>Remote Support Enabled</h1>
+   SessionID: AAA-1234-CCC
+ </div> 
+</div>
+  <div ng-if="!translationData.supportPhone"> 
+     <H1 class="red-color">No Support Phone number is Configured</h1>
+ </div>    
+  </ion-content>
+</ion-view>  

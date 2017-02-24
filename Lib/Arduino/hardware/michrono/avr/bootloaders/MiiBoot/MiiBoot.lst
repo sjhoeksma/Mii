@@ -1,0 +1,2787 @@
+   1               		.file	"MiiBoot.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__tmp_reg__ = 0
+   6               	__zero_reg__ = 1
+   7               		.text
+   8               	.Ltext0:
+   9               		.cfi_sections	.debug_frame
+  10               		.section	.text.spi_send_byte,"ax",@progbits
+  12               	spi_send_byte:
+  13               	.LFB11:
+  14               		.file 1 "MiiBoot.c"
+   1:MiiBoot.c     **** /*
+   2:MiiBoot.c     **** This file contains the boot loader for the MiiChrono devices
+   3:MiiBoot.c     **** It will load from a SDCard (FAT16) the file MIIAP000.HEX (000 is version) and loads it. 
+   4:MiiBoot.c     **** Loading is only done when reset is hit, default bootloader will jump into the program.
+   5:MiiBoot.c     **** 
+   6:MiiBoot.c     **** It is possible to debug program using Android, but keep it is loaded in to program mem and not boot
+   7:MiiBoot.c     **** 
+   8:MiiBoot.c     **** To install boot loader just run make prog for boot loader directory
+   9:MiiBoot.c     **** make prog
+  10:MiiBoot.c     **** 
+  11:MiiBoot.c     **** */
+  12:MiiBoot.c     **** 
+  13:MiiBoot.c     **** #include <inttypes.h>
+  14:MiiBoot.c     **** #include <avr/io.h>
+  15:MiiBoot.c     **** #include <avr/boot.h>
+  16:MiiBoot.c     **** #include <avr/pgmspace.h>
+  17:MiiBoot.c     **** #include <avr/eeprom.h>  /* filename from eeprom */
+  18:MiiBoot.c     **** 
+  19:MiiBoot.c     **** //Should we be able to load it into
+  20:MiiBoot.c     **** //#define BOOT_LOADER
+  21:MiiBoot.c     **** 
+  22:MiiBoot.c     **** //For compatability reasons we allow any version to be installed
+  23:MiiBoot.c     **** #define FLASH_ANY_VERSION
+  24:MiiBoot.c     **** 
+  25:MiiBoot.c     **** //Should we debug, will be undef when using BOOT_LOADER
+  26:MiiBoot.c     **** #define UART_DEBUG
+  27:MiiBoot.c     **** 
+  28:MiiBoot.c     **** // These define the Pin, Port and DDR of the Chip Select to the MMC...
+  29:MiiBoot.c     **** // Used to be defined here, but is now in the Makefile 
+  30:MiiBoot.c     **** #define MMC_CS		PB2		//also change MMC_PORT and MMC_DDR acordingly
+  31:MiiBoot.c     **** #define MMC_PORT        PORTB
+  32:MiiBoot.c     **** #define MMC_DDR         DDRB
+  33:MiiBoot.c     **** 
+  34:MiiBoot.c     **** #define VERSION 2
+  35:MiiBoot.c     **** // if the code cannot be programmed/run then the bootloader sits flashing an LED. The
+  36:MiiBoot.c     **** // following two defines say where that LED is PD6 is digital 6
+  37:MiiBoot.c     **** #if VERSION == 2
+  38:MiiBoot.c     **** #define LED_PORT PORTD
+  39:MiiBoot.c     **** #define LED_DDR  DDRD
+  40:MiiBoot.c     **** #define LED_PIN  PD6
+  41:MiiBoot.c     **** #else
+  42:MiiBoot.c     **** #define LED_PORT PORTC
+  43:MiiBoot.c     **** #define LED_DDR  DDRC
+  44:MiiBoot.c     **** #define LED_PIN  PC3
+  45:MiiBoot.c     **** 
+  46:MiiBoot.c     **** #endif
+  47:MiiBoot.c     **** 
+  48:MiiBoot.c     **** #define BAUD_RATE 57600
+  49:MiiBoot.c     **** 
+  50:MiiBoot.c     **** //The name we will use to match file
+  51:MiiBoot.c     **** char nameMatch[6] = {'M','I','I','A','P','\0'};
+  52:MiiBoot.c     **** 
+  53:MiiBoot.c     **** 
+  54:MiiBoot.c     **** #ifdef BOOT_LOADER
+  55:MiiBoot.c     **** /* function prototype */
+  56:MiiBoot.c     **** int main (void) __attribute__ ((naked,section (".init9")));
+  57:MiiBoot.c     **** //Bootloader should not have debug stuff
+  58:MiiBoot.c     **** #undef UART_DEBUG
+  59:MiiBoot.c     **** #endif
+  60:MiiBoot.c     **** 
+  61:MiiBoot.c     **** #define MMC_CMD0_RETRY	(unsigned char)16
+  62:MiiBoot.c     **** 
+  63:MiiBoot.c     **** 
+  64:MiiBoot.c     **** // Just enable the UART Tx and set baud rate for 38400 on 3.6864MHz (STK500)
+  65:MiiBoot.c     **** //http://www.wormfood.net/avrbaudcalc.php
+  66:MiiBoot.c     **** void UART_init(void) {
+  67:MiiBoot.c     ****   #ifdef BOOT_LOADER
+  68:MiiBoot.c     ****    UBRR0L = 12; // 38400 @ 8MHz
+  69:MiiBoot.c     ****   #else
+  70:MiiBoot.c     ****     UBRR0L = (uint8_t)(F_CPU/(BAUD_RATE*16L)-1);
+  71:MiiBoot.c     ****     UBRR0H = (F_CPU/(BAUD_RATE*16L)-1) >> 8;
+  72:MiiBoot.c     ****   #endif  
+  73:MiiBoot.c     ****     //UBRR0L = 12; // 38400 @ 8MHz
+  74:MiiBoot.c     ****     UCSR0B = (1 << TXEN0);
+  75:MiiBoot.c     **** }
+  76:MiiBoot.c     **** 
+  77:MiiBoot.c     **** // The classic Tx one character routine
+  78:MiiBoot.c     **** void UART_put(uint8_t c) {
+  79:MiiBoot.c     ****     while (!(UCSR0A & (1 << UDRE0)));
+  80:MiiBoot.c     ****     UDR0 = c;
+  81:MiiBoot.c     **** }
+  82:MiiBoot.c     **** 
+  83:MiiBoot.c     **** // classic Tx a C-string routine
+  84:MiiBoot.c     **** // As there is no .data (in the bootloader) it only makes sense for theis to use PSTR()
+  85:MiiBoot.c     **** void UART_puts(const char * str) {
+  86:MiiBoot.c     ****     char c;
+  87:MiiBoot.c     ****     do {
+  88:MiiBoot.c     ****         c = pgm_read_byte(str++);
+  89:MiiBoot.c     ****         if (c) {
+  90:MiiBoot.c     ****             UART_put(c);
+  91:MiiBoot.c     ****         }
+  92:MiiBoot.c     ****     } while (c != 0);
+  93:MiiBoot.c     **** }
+  94:MiiBoot.c     **** 
+  95:MiiBoot.c     **** // Just outputs "\r\n"
+  96:MiiBoot.c     **** void UART_newline(void){
+  97:MiiBoot.c     ****     UART_put('\r');
+  98:MiiBoot.c     ****     UART_put('\n');
+  99:MiiBoot.c     **** }
+ 100:MiiBoot.c     **** 
+ 101:MiiBoot.c     **** // used in printing a 2 digit hex number, outputs one of the two nibbles
+ 102:MiiBoot.c     **** // the parameter is expected to be 0..F
+ 103:MiiBoot.c     **** void UART_putnibble(uint8_t c) {
+ 104:MiiBoot.c     ****     if (c < 10) {
+ 105:MiiBoot.c     ****         UART_put('0' + c);
+ 106:MiiBoot.c     ****     }
+ 107:MiiBoot.c     ****     else {
+ 108:MiiBoot.c     ****         UART_put('A' + c - 10);
+ 109:MiiBoot.c     ****     }
+ 110:MiiBoot.c     **** }
+ 111:MiiBoot.c     **** 
+ 112:MiiBoot.c     **** // print both nibbles of an 8 bit hex number
+ 113:MiiBoot.c     **** void UART_puthex(uint8_t c) {
+ 114:MiiBoot.c     ****     UART_putnibble(c >> 4);
+ 115:MiiBoot.c     ****     UART_putnibble(c & 0x0F);
+ 116:MiiBoot.c     **** }
+ 117:MiiBoot.c     **** 
+ 118:MiiBoot.c     **** // print both bytes of a 16 bit hex number
+ 119:MiiBoot.c     **** void UART_puthex16(uint16_t n) {
+ 120:MiiBoot.c     ****     UART_puthex(n >> 8);
+ 121:MiiBoot.c     ****     UART_puthex(n & 0xFF);
+ 122:MiiBoot.c     **** }
+ 123:MiiBoot.c     **** 
+ 124:MiiBoot.c     **** // this expect the first parameter to be a string in dlash (that is PSTR())
+ 125:MiiBoot.c     **** // and then the second to be a value to print out in hex. typically used in
+ 126:MiiBoot.c     **** // the form UART_putsP(PSTR("SecPerClus = "), SecPerClus)
+ 127:MiiBoot.c     **** void UART_putsP(const char * str, uint16_t n) {
+ 128:MiiBoot.c     ****     UART_puts(str);
+ 129:MiiBoot.c     ****     UART_puthex16(n);
+ 130:MiiBoot.c     ****     UART_newline();
+ 131:MiiBoot.c     **** }
+ 132:MiiBoot.c     **** 
+ 133:MiiBoot.c     **** // dump the 512 bytes at the given address in the form:
+ 134:MiiBoot.c     **** // CD BF 10 E0 A0 E6 B0 E0  E4 E5 F0 E0 02 C0 05 90   Õø ‡†Ê∞‡‰Â‡ ¿ ê
+ 135:MiiBoot.c     **** void UART_dumpsector(uint8_t * Buff) {
+ 136:MiiBoot.c     ****     for (uint16_t i=0; i<512; i++) {
+ 137:MiiBoot.c     ****         if ((i % 16) == 0) {
+ 138:MiiBoot.c     ****             UART_put(' ');
+ 139:MiiBoot.c     ****             for(uint16_t j=(i -16); j<=i; j++) {
+ 140:MiiBoot.c     ****                 UART_put(((Buff[j]>=(uint8_t)32) && (Buff[j]<(uint8_t)127)) ? Buff[j] : '.');
+ 141:MiiBoot.c     ****             }
+ 142:MiiBoot.c     ****             UART_newline();
+ 143:MiiBoot.c     ****         }
+ 144:MiiBoot.c     ****         UART_puthex(Buff[i]);
+ 145:MiiBoot.c     ****         UART_put(' ');
+ 146:MiiBoot.c     ****     }
+ 147:MiiBoot.c     ****     UART_newline();
+ 148:MiiBoot.c     **** }
+ 149:MiiBoot.c     **** 
+ 150:MiiBoot.c     **** 
+ 151:MiiBoot.c     **** 
+ 152:MiiBoot.c     **** /* some variables */
+ 153:MiiBoot.c     **** //const void (*app_start)(void) = 0x0000;
+ 154:MiiBoot.c     **** void(* app_start) (void)=0; //declare reset function @ address 0
+ 155:MiiBoot.c     **** uint8_t reset_reason = 0;
+ 156:MiiBoot.c     **** 
+ 157:MiiBoot.c     **** 
+ 158:MiiBoot.c     **** /* page buffer ---------------------------------------------------- */
+ 159:MiiBoot.c     **** uint8_t pagebuffer[SPM_PAGESIZE];
+ 160:MiiBoot.c     **** 
+ 161:MiiBoot.c     **** 
+ 162:MiiBoot.c     **** /* address buffer */
+ 163:MiiBoot.c     **** uint16_t address;
+ 164:MiiBoot.c     **** 
+ 165:MiiBoot.c     **** /* access to flash memory------------------------------------------ */
+ 166:MiiBoot.c     **** 
+ 167:MiiBoot.c     **** void write_flash_page()
+ 168:MiiBoot.c     **** {
+ 169:MiiBoot.c     **** 	uint16_t i = 0;
+ 170:MiiBoot.c     **** 
+ 171:MiiBoot.c     **** 	eeprom_busy_wait ();
+ 172:MiiBoot.c     **** 
+ 173:MiiBoot.c     **** 	boot_page_erase (address);
+ 174:MiiBoot.c     **** 	boot_spm_busy_wait ();      // Wait until the memory is erased.
+ 175:MiiBoot.c     **** 
+ 176:MiiBoot.c     **** 	for (i=0; i<SPM_PAGESIZE; i+=2)
+ 177:MiiBoot.c     **** 	{
+ 178:MiiBoot.c     **** 		// Set up little-endian word.
+ 179:MiiBoot.c     **** 		uint16_t w = *((uint16_t*)(pagebuffer + i));
+ 180:MiiBoot.c     **** 		boot_page_fill (address + i, w);
+ 181:MiiBoot.c     **** 	}
+ 182:MiiBoot.c     **** 
+ 183:MiiBoot.c     **** 	boot_page_write(address);     // Store buffer in flash page.
+ 184:MiiBoot.c     **** 	boot_spm_busy_wait();            // Wait until the memory is written.
+ 185:MiiBoot.c     **** 
+ 186:MiiBoot.c     **** 	boot_rww_enable ();
+ 187:MiiBoot.c     **** }
+ 188:MiiBoot.c     **** 
+ 189:MiiBoot.c     **** /* This code has a rather big sector buffer of 512 bytes  */
+ 190:MiiBoot.c     **** /* with this export, other code can use it, too           */
+ 191:MiiBoot.c     **** extern uint8_t buff[512];
+ 192:MiiBoot.c     **** 
+ 193:MiiBoot.c     **** #if defined (__AVR_ATmega644__)
+ 194:MiiBoot.c     ****  #define SPCR	SPCR0
+ 195:MiiBoot.c     ****  #define SPIE	SPIE0
+ 196:MiiBoot.c     ****  #define SPE	SPE0	
+ 197:MiiBoot.c     ****  #define DORD	DORD0
+ 198:MiiBoot.c     ****  #define MSTR	MSTR0
+ 199:MiiBoot.c     ****  #define CPOL	CPOL0
+ 200:MiiBoot.c     ****  #define CPHA	CPHA0
+ 201:MiiBoot.c     ****  #define SPR1	SPR01
+ 202:MiiBoot.c     ****  #define SPR0	SPR00
+ 203:MiiBoot.c     **** 
+ 204:MiiBoot.c     ****  #define SPSR	SPSR0
+ 205:MiiBoot.c     ****  #define SPIF	SPIF0
+ 206:MiiBoot.c     ****  #define WCOL	WCOL0
+ 207:MiiBoot.c     ****  #define SPI2X	SPI2X0
+ 208:MiiBoot.c     **** 
+ 209:MiiBoot.c     ****  #define SPDR	SPDR0
+ 210:MiiBoot.c     **** #endif
+ 211:MiiBoot.c     **** 
+ 212:MiiBoot.c     **** //Port & Pin definitions.
+ 213:MiiBoot.c     **** //Settings below are recommended for a MEGA168 and MEGA328
+ 214:MiiBoot.c     **** #define SPI_PORT PORTB
+ 215:MiiBoot.c     **** #define SPI_DDR  DDRB
+ 216:MiiBoot.c     **** #define SPI_MISO	PB4		//DataOut of MMC
+ 217:MiiBoot.c     **** #define SPI_MOSI	PB3		//DataIn of  MMC
+ 218:MiiBoot.c     **** #define SPI_CLK  	PB5		//Clock of MMC
+ 219:MiiBoot.c     **** #define SPI_SS          PB2             //SS pin of SPI interface
+ 220:MiiBoot.c     **** 
+ 221:MiiBoot.c     **** 
+ 222:MiiBoot.c     **** //Clockrate while initialisation / reading / writing
+ 223:MiiBoot.c     **** #define SPI_INIT_CLOCK 1<<SPR1 | 1<<SPR0
+ 224:MiiBoot.c     **** #define SPI_READ_CLOCK 0<<SPR1 | 0<<SPR0
+ 225:MiiBoot.c     **** #define SPI_WRITE_CLOCK 1<<SPR1 | 0<<SPR0
+ 226:MiiBoot.c     **** 
+ 227:MiiBoot.c     **** #define SPI_DOUBLE_SPEED 0 //0: normal speed, 1: double speed
+ 228:MiiBoot.c     **** 
+ 229:MiiBoot.c     **** 
+ 230:MiiBoot.c     **** // Result Codes
+ 231:MiiBoot.c     **** #define MMC_OK 			0
+ 232:MiiBoot.c     **** #define MMC_INIT        1
+ 233:MiiBoot.c     **** #define MMC_NOSTARTBYTE	2
+ 234:MiiBoot.c     **** #define MMC_CMDERROR	3
+ 235:MiiBoot.c     **** #define MMC_TIMEOUT		4
+ 236:MiiBoot.c     **** 
+ 237:MiiBoot.c     **** 
+ 238:MiiBoot.c     **** /* ---[ FAT Structs ] --------------------------------------------- */
+ 239:MiiBoot.c     **** 
+ 240:MiiBoot.c     **** typedef struct
+ 241:MiiBoot.c     **** {
+ 242:MiiBoot.c     ****   unsigned char state;               // 0x80 if active
+ 243:MiiBoot.c     ****   unsigned char startHead;           // Starting head
+ 244:MiiBoot.c     ****   unsigned int  startCylinderSector; // Starting cyinder and sector
+ 245:MiiBoot.c     ****                                      // Format:
+ 246:MiiBoot.c     ****                                      // Bit 0..5  = Bit 0..5 of sector
+ 247:MiiBoot.c     ****                                      // Bit 6..7  = Bit 8..9 of cylinder
+ 248:MiiBoot.c     ****                                      // Bit 8..15 = Bit 0..7 of cylinder
+ 249:MiiBoot.c     ****   unsigned char typeId;              // Partition type
+ 250:MiiBoot.c     ****   unsigned char endHead;             // End head
+ 251:MiiBoot.c     ****   unsigned int  endCylinderSector;   // End cylinder and sector
+ 252:MiiBoot.c     ****                                      // Format see above
+ 253:MiiBoot.c     ****   unsigned long sectorOffset;        // Starting sector (counting from 0)
+ 254:MiiBoot.c     ****   unsigned long nSectors;            // Number of sectors in partition
+ 255:MiiBoot.c     **** } partition_t;
+ 256:MiiBoot.c     **** 
+ 257:MiiBoot.c     **** typedef union
+ 258:MiiBoot.c     **** {
+ 259:MiiBoot.c     ****    unsigned char buffer[512];
+ 260:MiiBoot.c     **** 
+ 261:MiiBoot.c     ****    struct
+ 262:MiiBoot.c     ****    {
+ 263:MiiBoot.c     ****       unsigned char fill[0x1BE];
+ 264:MiiBoot.c     ****       partition_t partition[4];
+ 265:MiiBoot.c     ****       unsigned short magic;
+ 266:MiiBoot.c     ****    } sector;
+ 267:MiiBoot.c     **** } mbr_t;
+ 268:MiiBoot.c     **** 
+ 269:MiiBoot.c     **** typedef struct
+ 270:MiiBoot.c     **** {
+ 271:MiiBoot.c     **** 	uint8_t  		bsjmpBoot[3]; 		// 0-2   Jump to bootstrap (E.g. eb 3c 90; on i86: JMP 003E NOP. One fi
+ 272:MiiBoot.c     **** 	char    		bsOEMName[8]; 		// 3-10  OEM name/version (E.g. "IBM  3.3", "IBM 20.0", "MSDOS5.0", "MSW
+ 273:MiiBoot.c     **** 	uint16_t   	bsBytesPerSec;		// 11-12 Number of bytes per sector (512). Must be one of 512, 1024, 2
+ 274:MiiBoot.c     **** 	uint8_t			bsSecPerClus;		// 13    Number of sectors per cluster (1). Must be one of 1, 2, 4, 8, 16
+ 275:MiiBoot.c     **** 	uint16_t		bsRsvdSecCnt;   	// 14-15 Number of reserved sectors (1). FAT12 and FAT16 use 1. FAT32 u
+ 276:MiiBoot.c     **** 	uint8_t			bsNumFATs;			// 16    Number of FAT copies (2)
+ 277:MiiBoot.c     **** 	uint16_t		bsRootEntCnt; 		// 17-18 Number of root directory entries (224). 0 for FAT32. 512 is rec
+ 278:MiiBoot.c     **** 	uint16_t		bsTotSec16; 		// 19-20 Total number of sectors in the filesystem (2880). (in case the pa
+ 279:MiiBoot.c     **** 	uint8_t			bsMedia;			// 21    Media descriptor type ->  For hard disks:  Value 0xF8  ,  DOS versio
+ 280:MiiBoot.c     **** 	uint16_t		bsNrSeProFAT16;     	// 22-23 Number of sectors per FAT (9). 0 for FAT32.
+ 281:MiiBoot.c     **** 	uint16_t		bsSecPerTrk;		// 24-25 Number of sectors per track (12)
+ 282:MiiBoot.c     **** 	uint16_t		bsNumHeads; 		// 26-27 Number of heads (2, for a double-sided diskette)
+ 283:MiiBoot.c     **** 	uint32_t		bsHiddSec;			// 28-31 Number of hidden sectors (0)
+ 284:MiiBoot.c     **** 	uint32_t		bsTotSec32; 		// 32-35 Number of total sectors (in case the total was not given in bytes
+ 285:MiiBoot.c     **** 	union
+ 286:MiiBoot.c     **** 	{
+ 287:MiiBoot.c     **** 		struct
+ 288:MiiBoot.c     **** 		{
+ 289:MiiBoot.c     **** 			uint8_t			bsLogDrvNr;			// 36    Logical Drive Number (for use with INT 13, e.g. 0 or 0x80)
+ 290:MiiBoot.c     **** 			uint8_t			bsReserved;			// 37    Reserved (Earlier: Current Head, the track containing the Boot 
+ 291:MiiBoot.c     **** 			uint8_t			bsExtSign;			// 38    Extended signature (0x29)  Indicates that the three following fi
+ 292:MiiBoot.c     **** 			uint32_t		bsParSerNr; 		// 39-42 Serial number of partition
+ 293:MiiBoot.c     **** 		};
+ 294:MiiBoot.c     **** 		
+ 295:MiiBoot.c     **** 		struct
+ 296:MiiBoot.c     **** 		{
+ 297:MiiBoot.c     **** 			uint32_t		SecPerFAT32;
+ 298:MiiBoot.c     **** 			uint8_t			reserved[3];
+ 299:MiiBoot.c     **** 		};
+ 300:MiiBoot.c     **** 	};
+ 301:MiiBoot.c     **** 	uint8_t			bsVolLbl[11]; 		// 43-53 Volume label or "NO NAME    "
+ 302:MiiBoot.c     **** 	uint8_t			bsFileSysType[8]; 	// 54-61 Filesystem type (E.g. "FAT12   ", "FAT16   ", "FAT     ", or
+ 303:MiiBoot.c     **** 	uint8_t			bsBootstrap[448]; 	// Bootstrap
+ 304:MiiBoot.c     **** 	uint16_t		bsSignature; 		// 510-511 Signature 55 aa
+ 305:MiiBoot.c     **** } vbr_t;
+ 306:MiiBoot.c     **** 
+ 307:MiiBoot.c     **** typedef struct 
+ 308:MiiBoot.c     **** {
+ 309:MiiBoot.c     **** 	char		name[11];      //8 chars filename
+ 310:MiiBoot.c     **** 	uint8_t	attr;         //file attributes RSHA, Longname, Drive Label, Directory
+ 311:MiiBoot.c     **** 	uint8_t reserved;
+ 312:MiiBoot.c     **** 	uint8_t fcrttime;			//Fine resolution creation time stamp, in tenths of a second
+ 313:MiiBoot.c     **** 	uint32_t crttime;			//Time of Creation
+ 314:MiiBoot.c     **** 	uint16_t lactime;			//Last Access Time
+ 315:MiiBoot.c     **** 	uint16_t eaindex;			//EA-Index (used by OS/2 and NT) in FAT12 and FAT16, high 2 ytes of first clus
+ 316:MiiBoot.c     **** 	uint32_t lmodtime;		//Last Modified Time
+ 317:MiiBoot.c     **** 	uint16_t fstclust;		//First cluster in FAT12 and FAT16, low 2 bytes of first clusternumber in FAT3
+ 318:MiiBoot.c     **** 	uint32_t filesize;		//File size
+ 319:MiiBoot.c     **** } direntry_t;
+ 320:MiiBoot.c     **** 
+ 321:MiiBoot.c     **** typedef struct
+ 322:MiiBoot.c     **** {
+ 323:MiiBoot.c     **** 	uint16_t fat_entry[256]; //0: Cluster unused, 1 - Clustercount: Next clusternum, 0xFFFF0 - 0xFFFF6
+ 324:MiiBoot.c     **** } fatsector_t;
+ 325:MiiBoot.c     **** 
+ 326:MiiBoot.c     **** 
+ 327:MiiBoot.c     **** 
+ 328:MiiBoot.c     **** static unsigned char cmd[6];
+ 329:MiiBoot.c     **** 
+ 330:MiiBoot.c     **** /* ---[ SPI Interface ]---------------------------------------------- */
+ 331:MiiBoot.c     **** 
+ 332:MiiBoot.c     **** static void spi_send_byte(unsigned char data)
+ 333:MiiBoot.c     **** {
+  15               		.loc 1 333 0
+  16               		.cfi_startproc
+  17               	.LVL0:
+  18               	/* prologue: function */
+  19               	/* frame size = 0 */
+  20               	/* stack size = 0 */
+  21               	.L__stack_usage = 0
+ 334:MiiBoot.c     **** 	SPDR=data;
+  22               		.loc 1 334 0
+  23 0000 8EBD      		out 0x2e,r24
+  24               	.L3:
+ 335:MiiBoot.c     **** 	loop_until_bit_is_set(SPSR, SPIF); // wait for byte transmitted...
+  25               		.loc 1 335 0 discriminator 1
+  26 0002 0DB4      		in __tmp_reg__,0x2d
+  27 0004 07FE      		sbrs __tmp_reg__,7
+  28 0006 00C0      		rjmp .L3
+  29               	/* epilogue start */
+ 336:MiiBoot.c     **** }
+  30               		.loc 1 336 0
+  31 0008 0895      		ret
+  32               		.cfi_endproc
+  33               	.LFE11:
+  35               		.section	.text.send_cmd,"ax",@progbits
+  37               	send_cmd:
+  38               	.LFB12:
+ 337:MiiBoot.c     **** 
+ 338:MiiBoot.c     **** static unsigned char send_cmd(void)
+ 339:MiiBoot.c     **** {
+  39               		.loc 1 339 0
+  40               		.cfi_startproc
+  41 0000 CF93      		push r28
+  42               	.LCFI0:
+  43               		.cfi_def_cfa_offset 3
+  44               		.cfi_offset 28, -2
+  45 0002 DF93      		push r29
+  46               	.LCFI1:
+  47               		.cfi_def_cfa_offset 4
+  48               		.cfi_offset 29, -3
+  49               	/* prologue: function */
+  50               	/* frame size = 0 */
+  51               	/* stack size = 2 */
+  52               	.L__stack_usage = 2
+ 340:MiiBoot.c     **** 	unsigned char i;
+ 341:MiiBoot.c     **** 	unsigned char *buf;
+ 342:MiiBoot.c     **** 	
+ 343:MiiBoot.c     ****   	spi_send_byte(0xFF);      //Dummy delay 8 clocks
+  53               		.loc 1 343 0
+  54 0004 8FEF      		ldi r24,lo8(-1)
+  55 0006 0E94 0000 		call spi_send_byte
+  56               	.LVL1:
+ 344:MiiBoot.c     **** 	MMC_PORT &= ~(1<<MMC_CS); //MMC Chip Select -> Low (activate mmc)
+  57               		.loc 1 344 0
+  58 000a 2A98      		cbi 0x5,2
+  59               	.LVL2:
+  60 000c C0E0      		ldi r28,lo8(cmd)
+  61 000e D0E0      		ldi r29,hi8(cmd)
+  62               	.LVL3:
+  63               	.L7:
+ 345:MiiBoot.c     **** 
+ 346:MiiBoot.c     **** 	/* send the 6 cmd bytes */
+ 347:MiiBoot.c     **** 	i=6;
+ 348:MiiBoot.c     **** 	buf = cmd;
+ 349:MiiBoot.c     **** 	while(i) {
+ 350:MiiBoot.c     **** 		spi_send_byte(*buf++);
+  64               		.loc 1 350 0
+  65 0010 8991      		ld r24,Y+
+  66               	.LVL4:
+  67 0012 0E94 0000 		call spi_send_byte
+  68               	.LVL5:
+ 349:MiiBoot.c     **** 	while(i) {
+  69               		.loc 1 349 0
+  70 0016 80E0      		ldi r24,hi8(cmd+6)
+  71 0018 C030      		cpi r28,lo8(cmd+6)
+  72 001a D807      		cpc r29,r24
+  73 001c 01F4      		brne .L7
+  74 001e CFEF      		ldi r28,lo8(-1)
+  75               	.LVL6:
+  76               	.L10:
+ 351:MiiBoot.c     **** 		i--;
+ 352:MiiBoot.c     **** 	}
+ 353:MiiBoot.c     **** 
+ 354:MiiBoot.c     **** 	unsigned char result;
+ 355:MiiBoot.c     **** 	
+ 356:MiiBoot.c     **** 	/* wait for response */
+ 357:MiiBoot.c     **** 	for(i=0; i<255; i++) {
+ 358:MiiBoot.c     **** 	
+ 359:MiiBoot.c     ****  		spi_send_byte(0xFF);
+  77               		.loc 1 359 0
+  78 0020 8FEF      		ldi r24,lo8(-1)
+  79 0022 0E94 0000 		call spi_send_byte
+  80               	.LVL7:
+ 360:MiiBoot.c     **** 		result = SPDR;
+  81               		.loc 1 360 0
+  82 0026 8EB5      		in r24,0x2e
+  83               	.LVL8:
+ 361:MiiBoot.c     **** 		
+ 362:MiiBoot.c     **** 		if ((result & 0x80) == 0)
+  84               		.loc 1 362 0
+  85 0028 87FF      		sbrs r24,7
+  86 002a 00C0      		rjmp .L12
+  87               	.LVL9:
+  88 002c C150      		subi r28,lo8(-(-1))
+  89               	.LVL10:
+ 357:MiiBoot.c     **** 	for(i=0; i<255; i++) {
+  90               		.loc 1 357 0
+  91 002e 01F4      		brne .L10
+  92               	.LVL11:
+  93               	.L12:
+  94               	/* epilogue start */
+ 363:MiiBoot.c     **** 			break;
+ 364:MiiBoot.c     **** 	}
+ 365:MiiBoot.c     **** 
+ 366:MiiBoot.c     **** 	return(result); // TimeOut !?
+ 367:MiiBoot.c     **** }
+  95               		.loc 1 367 0
+  96 0030 DF91      		pop r29
+  97 0032 CF91      		pop r28
+  98 0034 0895      		ret
+  99               		.cfi_endproc
+ 100               	.LFE12:
+ 102               		.section	.text.mmc_start_read_block,"ax",@progbits
+ 104               	mmc_start_read_block:
+ 105               	.LFB15:
+ 368:MiiBoot.c     **** 
+ 369:MiiBoot.c     **** /* ---[ MMC Interface ]---------------------------------------------- */
+ 370:MiiBoot.c     **** 
+ 371:MiiBoot.c     **** //all MMC Commandos needed for reading a file from the card
+ 372:MiiBoot.c     **** #define MMC_GO_IDLE_STATE 0
+ 373:MiiBoot.c     **** #define MMC_SEND_OP_COND 1
+ 374:MiiBoot.c     **** #define MMC_READ_SINGLE_BLOCK 17
+ 375:MiiBoot.c     **** unsigned long lastAdr=0xFFFFFFFF;
+ 376:MiiBoot.c     **** /* the sector buffer */
+ 377:MiiBoot.c     **** uint8_t buff[512];
+ 378:MiiBoot.c     **** 
+ 379:MiiBoot.c     **** 
+ 380:MiiBoot.c     **** /*			
+ 381:MiiBoot.c     **** *		Call mmc_init one time after a card has been connected to the �C's SPI bus!
+ 382:MiiBoot.c     **** *	
+ 383:MiiBoot.c     **** *		return values:
+ 384:MiiBoot.c     **** *			MMC_OK:				MMC initialized successfully
+ 385:MiiBoot.c     **** *			MMC_INIT:			Error while trying to reset MMC
+ 386:MiiBoot.c     **** *			MMC_TIMEOUT:	Error/Timeout while trying to initialize MMC
+ 387:MiiBoot.c     **** */
+ 388:MiiBoot.c     **** static inline unsigned char mmc_init(void)
+ 389:MiiBoot.c     **** {
+ 390:MiiBoot.c     **** 	// the default after reset is already input
+ 391:MiiBoot.c     **** 	//SPI_DDR &= ~(1<<SPI_MISO);	//SPI Data Out -> Input (default)
+ 392:MiiBoot.c     **** 	SPI_PORT |= 1<<SPI_SS;   //PB2 output: High (deselect other SPI chips)
+ 393:MiiBoot.c     **** 	SPI_DDR  |= 1<<SPI_CLK | 1<<SPI_MOSI | 1<<SPI_SS; // SPI Data -> Output
+ 394:MiiBoot.c     ****         SPCR = 1<<SPE | 1<<MSTR | SPI_INIT_CLOCK; //SPI Enable, SPI Master Mode
+ 395:MiiBoot.c     **** 
+ 396:MiiBoot.c     ****         #if MMC_CS != SPI_SS
+ 397:MiiBoot.c     ****           MMC_DDR |= 1<<MMC_CS; 	//MMC Chip Select -> Output
+ 398:MiiBoot.c     ****         #endif
+ 399:MiiBoot.c     **** 
+ 400:MiiBoot.c     **** 	unsigned char i;
+ 401:MiiBoot.c     **** 	
+ 402:MiiBoot.c     **** 	i=10;
+ 403:MiiBoot.c     **** 	while(i) { //Pulse 80+ clocks to reset MMC
+ 404:MiiBoot.c     **** 		spi_send_byte(0xFF);	
+ 405:MiiBoot.c     ****  		i--;
+ 406:MiiBoot.c     **** 	}
+ 407:MiiBoot.c     **** 
+ 408:MiiBoot.c     **** 	unsigned char res;
+ 409:MiiBoot.c     **** 
+ 410:MiiBoot.c     **** 	cmd[0] = 0x40 + MMC_GO_IDLE_STATE;
+ 411:MiiBoot.c     **** 	cmd[1] = 0x00; cmd[2] = 0x00; cmd[3] = 0x00; cmd[4] = 0x00; cmd[5] = 0x95;
+ 412:MiiBoot.c     **** 	
+ 413:MiiBoot.c     **** 	for (i=0; i<MMC_CMD0_RETRY; i++)
+ 414:MiiBoot.c     **** 	{
+ 415:MiiBoot.c     **** 		res=send_cmd(); //store result of reset command, should be 0x01
+ 416:MiiBoot.c     **** 
+ 417:MiiBoot.c     **** 		MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate mmc);
+ 418:MiiBoot.c     ****       	 	spi_send_byte(0xFF);
+ 419:MiiBoot.c     **** 		if (res == 0x01)
+ 420:MiiBoot.c     **** 			break;
+ 421:MiiBoot.c     **** 	}
+ 422:MiiBoot.c     **** 
+ 423:MiiBoot.c     **** 	if(i==MMC_CMD0_RETRY) return(MMC_TIMEOUT);
+ 424:MiiBoot.c     **** 
+ 425:MiiBoot.c     **** 	if (res != 0x01) //Response R1 from MMC (0x01: IDLE, The card is in idle state and running the ini
+ 426:MiiBoot.c     **** 		return(MMC_INIT);
+ 427:MiiBoot.c     **** 	
+ 428:MiiBoot.c     **** 	cmd[0]=0x40 + MMC_SEND_OP_COND;
+ 429:MiiBoot.c     **** 		
+ 430:MiiBoot.c     **** //May be this becomes an endless loop ?
+ 431:MiiBoot.c     **** //Counting i from 0 to 255 and then timeout
+ 432:MiiBoot.c     **** //was to SHORT for some of my cards !
+ 433:MiiBoot.c     **** 	while(send_cmd() != 0) {
+ 434:MiiBoot.c     **** 		MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate);
+ 435:MiiBoot.c     **** 		spi_send_byte(0xFF);
+ 436:MiiBoot.c     **** 	}
+ 437:MiiBoot.c     **** 	
+ 438:MiiBoot.c     **** 	return(MMC_OK);
+ 439:MiiBoot.c     **** }
+ 440:MiiBoot.c     **** 
+ 441:MiiBoot.c     **** static inline unsigned char wait_start_byte(void)
+ 442:MiiBoot.c     **** {
+ 443:MiiBoot.c     **** 	unsigned char i;
+ 444:MiiBoot.c     **** 	
+ 445:MiiBoot.c     **** 	i=255;
+ 446:MiiBoot.c     **** 	do {
+ 447:MiiBoot.c     **** 		spi_send_byte(0xFF);
+ 448:MiiBoot.c     **** 		if(SPDR == 0xFE) return MMC_OK;
+ 449:MiiBoot.c     **** 	} while(--i);
+ 450:MiiBoot.c     **** 	
+ 451:MiiBoot.c     **** 	return MMC_NOSTARTBYTE;
+ 452:MiiBoot.c     **** }
+ 453:MiiBoot.c     **** 
+ 454:MiiBoot.c     **** /*
+ 455:MiiBoot.c     ****  *		mmc_start_read_sector initializes the reading of a sector
+ 456:MiiBoot.c     ****  *
+ 457:MiiBoot.c     ****  *		Parameters:
+ 458:MiiBoot.c     ****  *			adr: specifies address to be read from
+ 459:MiiBoot.c     ****  *
+ 460:MiiBoot.c     ****  *		Return values:
+ 461:MiiBoot.c     ****  *			MMC_OK:						Command successful
+ 462:MiiBoot.c     ****  *			MMC_CMDERROR:			Error while sending read command to mmc
+ 463:MiiBoot.c     ****  *			MMC_NOSTARTBYTE:	No start byte received
+ 464:MiiBoot.c     ****  */
+ 465:MiiBoot.c     **** static unsigned char mmc_start_read_block(unsigned long adr)
+ 466:MiiBoot.c     **** {
+ 106               		.loc 1 466 0
+ 107               		.cfi_startproc
+ 108               	.LVL12:
+ 109 0000 0F93      		push r16
+ 110               	.LCFI2:
+ 111               		.cfi_def_cfa_offset 3
+ 112               		.cfi_offset 16, -2
+ 113 0002 1F93      		push r17
+ 114               	.LCFI3:
+ 115               		.cfi_def_cfa_offset 4
+ 116               		.cfi_offset 17, -3
+ 117 0004 CF93      		push r28
+ 118               	.LCFI4:
+ 119               		.cfi_def_cfa_offset 5
+ 120               		.cfi_offset 28, -4
+ 121 0006 DF93      		push r29
+ 122               	.LCFI5:
+ 123               		.cfi_def_cfa_offset 6
+ 124               		.cfi_offset 29, -5
+ 125               	/* prologue: function */
+ 126               	/* frame size = 0 */
+ 127               	/* stack size = 4 */
+ 128               	.L__stack_usage = 4
+ 467:MiiBoot.c     **** 	if (adr==lastAdr) return (MMC_OK);
+ 129               		.loc 1 467 0
+ 130 0008 0091 0000 		lds r16,lastAdr
+ 131 000c 1091 0000 		lds r17,lastAdr+1
+ 132 0010 2091 0000 		lds r18,lastAdr+2
+ 133 0014 3091 0000 		lds r19,lastAdr+3
+ 134 0018 6017      		cp r22,r16
+ 135 001a 7107      		cpc r23,r17
+ 136 001c 8207      		cpc r24,r18
+ 137 001e 9307      		cpc r25,r19
+ 138 0020 01F4      		brne .+2
+ 139 0022 00C0      		rjmp .L23
+ 468:MiiBoot.c     ****         lastAdr = adr;
+ 140               		.loc 1 468 0
+ 141 0024 6093 0000 		sts lastAdr,r22
+ 142 0028 7093 0000 		sts lastAdr+1,r23
+ 143 002c 8093 0000 		sts lastAdr+2,r24
+ 144 0030 9093 0000 		sts lastAdr+3,r25
+ 469:MiiBoot.c     ****         adr <<= 1;
+ 145               		.loc 1 469 0
+ 146 0034 DC01      		movw r26,r24
+ 147 0036 CB01      		movw r24,r22
+ 148 0038 880F      		lsl r24
+ 149 003a 991F      		rol r25
+ 150 003c AA1F      		rol r26
+ 151 003e BB1F      		rol r27
+ 152               	.LVL13:
+ 470:MiiBoot.c     **** 	
+ 471:MiiBoot.c     **** 	cmd[0] = 0x40 + MMC_READ_SINGLE_BLOCK;
+ 153               		.loc 1 471 0
+ 154 0040 21E5      		ldi r18,lo8(81)
+ 155 0042 2093 0000 		sts cmd,r18
+ 472:MiiBoot.c     **** 	cmd[1] = (adr & 0x00FF0000) >> 0x10;
+ 156               		.loc 1 472 0
+ 157 0046 A093 0000 		sts cmd+1,r26
+ 473:MiiBoot.c     **** 	cmd[2] = (adr & 0x0000FF00) >> 0x08;
+ 158               		.loc 1 473 0
+ 159 004a 9093 0000 		sts cmd+2,r25
+ 474:MiiBoot.c     **** 	cmd[3] = (adr & 0x000000FF);
+ 160               		.loc 1 474 0
+ 161 004e 8093 0000 		sts cmd+3,r24
+ 475:MiiBoot.c     **** 	cmd[4] = 0;
+ 162               		.loc 1 475 0
+ 163 0052 1092 0000 		sts cmd+4,__zero_reg__
+ 476:MiiBoot.c     **** 
+ 477:MiiBoot.c     **** 	SPCR = 1<<SPE | 1<<MSTR | SPI_READ_CLOCK; //SPI Enable, SPI Master Mode
+ 164               		.loc 1 477 0
+ 165 0056 80E5      		ldi r24,lo8(80)
+ 166 0058 8CBD      		out 0x2c,r24
+ 478:MiiBoot.c     **** 	
+ 479:MiiBoot.c     **** 	if (send_cmd() != 0x00 || wait_start_byte()) {
+ 167               		.loc 1 479 0
+ 168 005a 0E94 0000 		call send_cmd
+ 169               	.LVL14:
+ 170 005e 182F      		mov r17,r24
+ 171 0060 8823      		tst r24
+ 172 0062 01F0      		breq .L17
+ 173               	.L19:
+ 480:MiiBoot.c     **** 		MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate mmc);
+ 174               		.loc 1 480 0
+ 175 0064 2A9A      		sbi 0x5,2
+ 481:MiiBoot.c     **** 		return(MMC_CMDERROR); //wrong response!
+ 176               		.loc 1 481 0
+ 177 0066 13E0      		ldi r17,lo8(3)
+ 178 0068 00C0      		rjmp .L16
+ 179               	.L17:
+ 479:MiiBoot.c     **** 	if (send_cmd() != 0x00 || wait_start_byte()) {
+ 180               		.loc 1 479 0
+ 181 006a CFEF      		ldi r28,lo8(-1)
+ 182               	.L20:
+ 183               	.LVL15:
+ 184               	.LBB4:
+ 185               	.LBB5:
+ 447:MiiBoot.c     **** 		spi_send_byte(0xFF);
+ 186               		.loc 1 447 0
+ 187 006c 8FEF      		ldi r24,lo8(-1)
+ 188 006e 0E94 0000 		call spi_send_byte
+ 189               	.LVL16:
+ 448:MiiBoot.c     **** 		if(SPDR == 0xFE) return MMC_OK;
+ 190               		.loc 1 448 0
+ 191 0072 8EB5      		in r24,0x2e
+ 192 0074 8E3F      		cpi r24,lo8(-2)
+ 193 0076 01F0      		breq .L18
+ 194               	.LVL17:
+ 195 0078 C150      		subi r28,lo8(-(-1))
+ 196               	.LVL18:
+ 449:MiiBoot.c     **** 	} while(--i);
+ 197               		.loc 1 449 0
+ 198 007a 01F4      		brne .L20
+ 199 007c 00C0      		rjmp .L19
+ 200               	.L18:
+ 201 007e C0E0      		ldi r28,lo8(buff)
+ 202 0080 D0E0      		ldi r29,hi8(buff)
+ 203               	.LVL19:
+ 204               	.L22:
+ 205               	.LBE5:
+ 206               	.LBE4:
+ 482:MiiBoot.c     **** 	}
+ 483:MiiBoot.c     **** 	
+ 484:MiiBoot.c     **** 	//mmc_read_buffer
+ 485:MiiBoot.c     **** 	unsigned char *buf;
+ 486:MiiBoot.c     **** 	unsigned short len;
+ 487:MiiBoot.c     ****  
+ 488:MiiBoot.c     **** 	buf = buff;
+ 489:MiiBoot.c     **** 	len= 512;
+ 490:MiiBoot.c     **** 	
+ 491:MiiBoot.c     **** 	while (len) {
+ 492:MiiBoot.c     **** 		spi_send_byte(0xFF);
+ 207               		.loc 1 492 0
+ 208 0082 8FEF      		ldi r24,lo8(-1)
+ 209 0084 0E94 0000 		call spi_send_byte
+ 210               	.LVL20:
+ 493:MiiBoot.c     **** 		*buf++ = SPDR;
+ 211               		.loc 1 493 0
+ 212 0088 8EB5      		in r24,0x2e
+ 213 008a 8993      		st Y+,r24
+ 214               	.LVL21:
+ 491:MiiBoot.c     **** 	while (len) {
+ 215               		.loc 1 491 0
+ 216 008c 80E0      		ldi r24,hi8(buff+512)
+ 217 008e C030      		cpi r28,lo8(buff+512)
+ 218 0090 D807      		cpc r29,r24
+ 219 0092 01F4      		brne .L22
+ 494:MiiBoot.c     **** 		len--;
+ 495:MiiBoot.c     **** 	}
+ 496:MiiBoot.c     **** 	
+ 497:MiiBoot.c     **** 	//mmc_stop_read_block
+ 498:MiiBoot.c     **** 	//read 2 bytes CRC (not used);
+ 499:MiiBoot.c     **** 	spi_send_byte(0xFF);
+ 220               		.loc 1 499 0
+ 221 0094 8FEF      		ldi r24,lo8(-1)
+ 222 0096 0E94 0000 		call spi_send_byte
+ 223               	.LVL22:
+ 500:MiiBoot.c     **** 	spi_send_byte(0xFF);
+ 224               		.loc 1 500 0
+ 225 009a 8FEF      		ldi r24,lo8(-1)
+ 226 009c 0E94 0000 		call spi_send_byte
+ 227               	.LVL23:
+ 501:MiiBoot.c     **** 	MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate mmc);
+ 228               		.loc 1 501 0
+ 229 00a0 2A9A      		sbi 0x5,2
+ 502:MiiBoot.c     **** 	
+ 503:MiiBoot.c     ****         #ifdef UART_DEBUG
+ 504:MiiBoot.c     ****           UART_dumpsector(buff);
+ 505:MiiBoot.c     ****         #endif   
+ 506:MiiBoot.c     ****      return(MMC_OK);
+ 230               		.loc 1 506 0
+ 231 00a2 00C0      		rjmp .L16
+ 232               	.LVL24:
+ 233               	.L23:
+ 467:MiiBoot.c     **** 	if (adr==lastAdr) return (MMC_OK);
+ 234               		.loc 1 467 0
+ 235 00a4 10E0      		ldi r17,0
+ 236               	.LVL25:
+ 237               	.L16:
+ 507:MiiBoot.c     **** }
+ 238               		.loc 1 507 0
+ 239 00a6 812F      		mov r24,r17
+ 240               	/* epilogue start */
+ 241 00a8 DF91      		pop r29
+ 242 00aa CF91      		pop r28
+ 243 00ac 1F91      		pop r17
+ 244 00ae 0F91      		pop r16
+ 245 00b0 0895      		ret
+ 246               		.cfi_endproc
+ 247               	.LFE15:
+ 249               		.section	.text.unlikely.file_read_byte,"ax",@progbits
+ 251               	file_read_byte:
+ 252               	.LFB19:
+ 508:MiiBoot.c     **** 
+ 509:MiiBoot.c     **** /* ---[ FAT16 ]------------------------------------------------------ */
+ 510:MiiBoot.c     **** 
+ 511:MiiBoot.c     **** static uint16_t  RootDirRegionStartSec;
+ 512:MiiBoot.c     **** static uint32_t  DataRegionStartSec;
+ 513:MiiBoot.c     **** static uint16_t  RootDirRegionSize;
+ 514:MiiBoot.c     **** static uint8_t   SectorsPerCluster;
+ 515:MiiBoot.c     **** static uint16_t  FATRegionStartSec;
+ 516:MiiBoot.c     **** 
+ 517:MiiBoot.c     **** static inline unsigned char fat16_init(void)
+ 518:MiiBoot.c     **** {
+ 519:MiiBoot.c     **** 	mbr_t *mbr = (mbr_t*) buff;
+ 520:MiiBoot.c     **** 	vbr_t *vbr = (vbr_t*) buff;
+ 521:MiiBoot.c     **** 		
+ 522:MiiBoot.c     **** 	if (mmc_init() != MMC_OK) return 1;
+ 523:MiiBoot.c     **** 	
+ 524:MiiBoot.c     ****     mmc_start_read_block(0);
+ 525:MiiBoot.c     **** 
+ 526:MiiBoot.c     ****     // Try sector 0 as a bootsector
+ 527:MiiBoot.c     **** 	if ((vbr->bsFileSysType[0] == 'F') && (vbr->bsFileSysType[4] == '6'))
+ 528:MiiBoot.c     **** 	{
+ 529:MiiBoot.c     **** 		FATRegionStartSec = 0;
+ 530:MiiBoot.c     **** 	}
+ 531:MiiBoot.c     **** 	else // Try sector 0 as a MBR	
+ 532:MiiBoot.c     **** 	{     	 
+ 533:MiiBoot.c     **** 		FATRegionStartSec = mbr->sector.partition[0].sectorOffset;
+ 534:MiiBoot.c     ****           
+ 535:MiiBoot.c     **** 		mmc_start_read_block(mbr->sector.partition[0].sectorOffset);
+ 536:MiiBoot.c     **** 	  
+ 537:MiiBoot.c     ****         if ((vbr->bsFileSysType[0] != 'F') || (vbr->bsFileSysType[4] != '6'))
+ 538:MiiBoot.c     **** 		   return 2; // No FAT16 found
+ 539:MiiBoot.c     ****      }
+ 540:MiiBoot.c     ****     
+ 541:MiiBoot.c     **** 	SectorsPerCluster  			= vbr->bsSecPerClus; // 4
+ 542:MiiBoot.c     **** 	
+ 543:MiiBoot.c     **** 	// Calculation Algorithms
+ 544:MiiBoot.c     **** 	FATRegionStartSec			+= vbr->bsRsvdSecCnt;						// 6
+ 545:MiiBoot.c     **** 	RootDirRegionStartSec	 	= FATRegionStartSec + (vbr->bsNumFATs * vbr->bsNrSeProFAT16);		// 496	
+ 546:MiiBoot.c     **** 	RootDirRegionSize		 	= (vbr->bsRootEntCnt / 16); 						// 32
+ 547:MiiBoot.c     **** 	DataRegionStartSec 			= RootDirRegionStartSec + RootDirRegionSize;	// 528
+ 548:MiiBoot.c     **** 	
+ 549:MiiBoot.c     **** 	return 0;
+ 550:MiiBoot.c     **** }
+ 551:MiiBoot.c     **** 
+ 552:MiiBoot.c     **** static struct _file_s {
+ 553:MiiBoot.c     **** 	uint16_t startcluster;
+ 554:MiiBoot.c     ****  	uint16_t sector_counter;
+ 555:MiiBoot.c     ****  	uint32_t size;
+ 556:MiiBoot.c     ****  	uint8_t* next;
+ 557:MiiBoot.c     **** } file;
+ 558:MiiBoot.c     **** 
+ 559:MiiBoot.c     **** static inline uint8_t fat16_readRootDirEntry(uint16_t entry_num,uint16_t *filever) {
+ 560:MiiBoot.c     **** 	uint8_t direntry_in_sector;
+ 561:MiiBoot.c     ****  	direntry_t *dir;
+ 562:MiiBoot.c     **** 		
+ 563:MiiBoot.c     **** 	/* Check for end of root dir region reached! */
+ 564:MiiBoot.c     **** 	if ((entry_num / 16) >= RootDirRegionSize)
+ 565:MiiBoot.c     **** 		return 0;
+ 566:MiiBoot.c     **** 
+ 567:MiiBoot.c     **** 	/* this finds the sector in which the entry will be saved */	
+ 568:MiiBoot.c     **** 	uint32_t dirsector = RootDirRegionStartSec + entry_num / 16;
+ 569:MiiBoot.c     **** 
+ 570:MiiBoot.c     **** 	/* this is the offset inside the sector */
+ 571:MiiBoot.c     **** 	/* there are 16 entries in a sector, each 32 bytes long */
+ 572:MiiBoot.c     ****     direntry_in_sector = (unsigned char) entry_num % 16;
+ 573:MiiBoot.c     **** 
+ 574:MiiBoot.c     **** 	/* get the sector into the buffer */
+ 575:MiiBoot.c     **** 	mmc_start_read_block(dirsector);
+ 576:MiiBoot.c     **** 	
+ 577:MiiBoot.c     **** 	/* pointer to the direntry inside the buffer */
+ 578:MiiBoot.c     **** 	dir = (direntry_t *) buff + direntry_in_sector;
+ 579:MiiBoot.c     **** 
+ 580:MiiBoot.c     **** 	if ((dir->name[0] == 0) || (dir->name[0] == 0xE5) || (dir->fstclust == 0))
+ 581:MiiBoot.c     **** 		return 0;
+ 582:MiiBoot.c     **** 
+ 583:MiiBoot.c     **** 	/* fill in the file structure */
+ 584:MiiBoot.c     **** 	file.startcluster = dir->fstclust;
+ 585:MiiBoot.c     **** 	file.size = dir->filesize;
+ 586:MiiBoot.c     **** 	file.sector_counter = 0;
+ 587:MiiBoot.c     **** 	file.next = buff + 512;
+ 588:MiiBoot.c     **** 
+ 589:MiiBoot.c     ****         
+ 590:MiiBoot.c     **** 	/* compare name */
+ 591:MiiBoot.c     **** 	uint8_t i = 0;
+ 592:MiiBoot.c     **** 	uint8_t match = 1;
+ 593:MiiBoot.c     **** 	for (i = 0; nameMatch[i]; i++) { 
+ 594:MiiBoot.c     **** 	  match &= (nameMatch[i] == dir->name[i]);
+ 595:MiiBoot.c     **** 	}
+ 596:MiiBoot.c     **** 	if (!(match && i)) return 0;
+ 597:MiiBoot.c     **** 
+ 598:MiiBoot.c     ****         *filever = ((dir->name[i]-'0') << 8) | ((dir->name[i+1]-'0') << 4) | (dir->name[i+2]-'0');
+ 599:MiiBoot.c     **** 	
+ 600:MiiBoot.c     **** 	/* match ending, seach for HEX => return 1, or EEP => return 2*/
+ 601:MiiBoot.c     **** 	if (dir->name[9] != 'E') return 0;
+ 602:MiiBoot.c     **** 	if (dir->name[8] == 'H' && dir->name[10] == 'X') return 1;
+ 603:MiiBoot.c     **** 	if (dir->name[8] == 'E' && dir->name[10] == 'P') return 2;
+ 604:MiiBoot.c     **** 	return 0;
+ 605:MiiBoot.c     **** }
+ 606:MiiBoot.c     **** 
+ 607:MiiBoot.c     **** static void inline fat16_readfilesector()
+ 608:MiiBoot.c     **** {
+ 609:MiiBoot.c     **** 	uint16_t clusteroffset;
+ 610:MiiBoot.c     **** 	uint8_t currentfatsector;
+ 611:MiiBoot.c     **** 	uint8_t temp, secoffset;
+ 612:MiiBoot.c     **** 	uint32_t templong;
+ 613:MiiBoot.c     **** 	uint16_t cluster = file.startcluster;
+ 614:MiiBoot.c     **** 	
+ 615:MiiBoot.c     **** 	fatsector_t *fatsector = (fatsector_t*) buff;
+ 616:MiiBoot.c     **** 
+ 617:MiiBoot.c     **** 	/* SectorsPerCluster is always power of 2 ! */
+ 618:MiiBoot.c     **** 	secoffset = (uint8_t)file.sector_counter & (SectorsPerCluster-1);
+ 619:MiiBoot.c     **** 	
+ 620:MiiBoot.c     **** 	clusteroffset = file.sector_counter;
+ 621:MiiBoot.c     **** 	temp = SectorsPerCluster >> 1;
+ 622:MiiBoot.c     **** 	while(temp) {
+ 623:MiiBoot.c     **** 		clusteroffset >>= 1;
+ 624:MiiBoot.c     ****         temp >>= 1;
+ 625:MiiBoot.c     ****     }
+ 626:MiiBoot.c     **** 
+ 627:MiiBoot.c     **** 	currentfatsector = 0xFF;
+ 628:MiiBoot.c     **** 	while (clusteroffset)
+ 629:MiiBoot.c     **** 	{
+ 630:MiiBoot.c     **** 		temp = (unsigned char)((cluster & 0xFF00) >>8);
+ 631:MiiBoot.c     ****           
+ 632:MiiBoot.c     **** 		if (currentfatsector != temp)
+ 633:MiiBoot.c     **** 		{
+ 634:MiiBoot.c     **** 			mmc_start_read_block(FATRegionStartSec + temp);
+ 635:MiiBoot.c     **** 
+ 636:MiiBoot.c     **** 			currentfatsector = temp;
+ 637:MiiBoot.c     **** 		}
+ 638:MiiBoot.c     **** 		
+ 639:MiiBoot.c     **** 		cluster = fatsector->fat_entry[cluster % 256];
+ 640:MiiBoot.c     **** 		clusteroffset--;
+ 641:MiiBoot.c     **** 	}
+ 642:MiiBoot.c     **** 
+ 643:MiiBoot.c     **** 	templong = cluster - 2;
+ 644:MiiBoot.c     **** 	temp = SectorsPerCluster>>1;
+ 645:MiiBoot.c     **** 	while(temp) {
+ 646:MiiBoot.c     **** 		templong <<= 1;	
+ 647:MiiBoot.c     **** 		temp >>= 1;
+ 648:MiiBoot.c     **** 	}
+ 649:MiiBoot.c     **** 		
+ 650:MiiBoot.c     **** 	/* read the sector of the file into the buffer */
+ 651:MiiBoot.c     **** 	mmc_start_read_block(templong + DataRegionStartSec + secoffset);
+ 652:MiiBoot.c     **** 	
+ 653:MiiBoot.c     **** 	/* advance to next sector */
+ 654:MiiBoot.c     **** 	file.sector_counter++;
+ 655:MiiBoot.c     **** }
+ 656:MiiBoot.c     **** 
+ 657:MiiBoot.c     **** /* ----[ file ]--------------------------------------------------- */
+ 658:MiiBoot.c     **** 
+ 659:MiiBoot.c     **** static uint8_t file_read_byte() {	// read a byte from the open file from the mmc...
+ 253               		.loc 1 659 0
+ 254               		.cfi_startproc
+ 255 0000 8F92      		push r8
+ 256               	.LCFI6:
+ 257               		.cfi_def_cfa_offset 3
+ 258               		.cfi_offset 8, -2
+ 259 0002 9F92      		push r9
+ 260               	.LCFI7:
+ 261               		.cfi_def_cfa_offset 4
+ 262               		.cfi_offset 9, -3
+ 263 0004 AF92      		push r10
+ 264               	.LCFI8:
+ 265               		.cfi_def_cfa_offset 5
+ 266               		.cfi_offset 10, -4
+ 267 0006 BF92      		push r11
+ 268               	.LCFI9:
+ 269               		.cfi_def_cfa_offset 6
+ 270               		.cfi_offset 11, -5
+ 271 0008 CF92      		push r12
+ 272               	.LCFI10:
+ 273               		.cfi_def_cfa_offset 7
+ 274               		.cfi_offset 12, -6
+ 275 000a DF92      		push r13
+ 276               	.LCFI11:
+ 277               		.cfi_def_cfa_offset 8
+ 278               		.cfi_offset 13, -7
+ 279 000c EF92      		push r14
+ 280               	.LCFI12:
+ 281               		.cfi_def_cfa_offset 9
+ 282               		.cfi_offset 14, -8
+ 283 000e FF92      		push r15
+ 284               	.LCFI13:
+ 285               		.cfi_def_cfa_offset 10
+ 286               		.cfi_offset 15, -9
+ 287 0010 0F93      		push r16
+ 288               	.LCFI14:
+ 289               		.cfi_def_cfa_offset 11
+ 290               		.cfi_offset 16, -10
+ 291 0012 1F93      		push r17
+ 292               	.LCFI15:
+ 293               		.cfi_def_cfa_offset 12
+ 294               		.cfi_offset 17, -11
+ 295 0014 CF93      		push r28
+ 296               	.LCFI16:
+ 297               		.cfi_def_cfa_offset 13
+ 298               		.cfi_offset 28, -12
+ 299 0016 DF93      		push r29
+ 300               	.LCFI17:
+ 301               		.cfi_def_cfa_offset 14
+ 302               		.cfi_offset 29, -13
+ 303               	/* prologue: function */
+ 304               	/* frame size = 0 */
+ 305               	/* stack size = 12 */
+ 306               	.L__stack_usage = 12
+ 660:MiiBoot.c     **** 	if (file.next >= buff + 512) {
+ 307               		.loc 1 660 0
+ 308 0018 0091 0000 		lds r16,file+8
+ 309 001c 1091 0000 		lds r17,file+8+1
+ 310 0020 80E0      		ldi r24,hi8(buff+512)
+ 311 0022 0030      		cpi r16,lo8(buff+512)
+ 312 0024 1807      		cpc r17,r24
+ 313 0026 00F4      		brsh .+2
+ 314 0028 00C0      		rjmp .L28
+ 315               	.LBB8:
+ 316               	.LBB9:
+ 613:MiiBoot.c     **** 	uint16_t cluster = file.startcluster;
+ 317               		.loc 1 613 0
+ 318 002a E090 0000 		lds r14,file
+ 319 002e F090 0000 		lds r15,file+1
+ 320               	.LVL26:
+ 618:MiiBoot.c     **** 	secoffset = (uint8_t)file.sector_counter & (SectorsPerCluster-1);
+ 321               		.loc 1 618 0
+ 322 0032 C091 0000 		lds r28,file+2
+ 323 0036 D091 0000 		lds r29,file+2+1
+ 324 003a 8090 0000 		lds r8,SectorsPerCluster
+ 325 003e 9924      		clr r9
+ 326 0040 9A94      		dec r9
+ 327 0042 980C      		add r9,r8
+ 328 0044 9C22      		and r9,r28
+ 329               	.LVL27:
+ 621:MiiBoot.c     **** 	temp = SectorsPerCluster >> 1;
+ 330               		.loc 1 621 0
+ 331 0046 8694      		lsr r8
+ 332               	.LVL28:
+ 333 0048 882D      		mov r24,r8
+ 620:MiiBoot.c     **** 	clusteroffset = file.sector_counter;
+ 334               		.loc 1 620 0
+ 335 004a 6E01      		movw r12,r28
+ 336               	.LVL29:
+ 337               	.L29:
+ 622:MiiBoot.c     **** 	while(temp) {
+ 338               		.loc 1 622 0
+ 339 004c 8823      		tst r24
+ 340 004e 01F0      		breq .L36
+ 623:MiiBoot.c     **** 		clusteroffset >>= 1;
+ 341               		.loc 1 623 0
+ 342 0050 D694      		lsr r13
+ 343 0052 C794      		ror r12
+ 344               	.LVL30:
+ 624:MiiBoot.c     ****         temp >>= 1;
+ 345               		.loc 1 624 0
+ 346 0054 8695      		lsr r24
+ 347               	.LVL31:
+ 348 0056 00C0      		rjmp .L29
+ 349               	.L36:
+ 622:MiiBoot.c     **** 	while(temp) {
+ 350               		.loc 1 622 0
+ 351 0058 8FEF      		ldi r24,lo8(-1)
+ 352               	.LVL32:
+ 353               	.L31:
+ 628:MiiBoot.c     **** 	while (clusteroffset)
+ 354               		.loc 1 628 0
+ 355 005a C114      		cp r12,__zero_reg__
+ 356 005c D104      		cpc r13,__zero_reg__
+ 357 005e 01F0      		breq .L37
+ 630:MiiBoot.c     **** 		temp = (unsigned char)((cluster & 0xFF00) >>8);
+ 358               		.loc 1 630 0
+ 359 0060 AF2C      		mov r10,r15
+ 360 0062 BB24      		clr r11
+ 361               	.LVL33:
+ 632:MiiBoot.c     **** 		if (currentfatsector != temp)
+ 362               		.loc 1 632 0
+ 363 0064 8A15      		cp r24,r10
+ 364 0066 01F0      		breq .L32
+ 634:MiiBoot.c     **** 			mmc_start_read_block(FATRegionStartSec + temp);
+ 365               		.loc 1 634 0
+ 366 0068 6091 0000 		lds r22,FATRegionStartSec
+ 367 006c 7091 0000 		lds r23,FATRegionStartSec+1
+ 368 0070 6A0D      		add r22,r10
+ 369 0072 7B1D      		adc r23,r11
+ 370 0074 80E0      		ldi r24,0
+ 371 0076 90E0      		ldi r25,0
+ 372               	.LVL34:
+ 373 0078 0E94 0000 		call mmc_start_read_block
+ 374               	.LVL35:
+ 375               	.L32:
+ 639:MiiBoot.c     **** 		cluster = fatsector->fat_entry[cluster % 256];
+ 376               		.loc 1 639 0
+ 377 007c F701      		movw r30,r14
+ 378 007e FF27      		clr r31
+ 379 0080 EE0F      		lsl r30
+ 380 0082 FF1F      		rol r31
+ 381 0084 E050      		subi r30,lo8(-(buff))
+ 382 0086 F040      		sbci r31,hi8(-(buff))
+ 383 0088 E080      		ld r14,Z
+ 384 008a F180      		ldd r15,Z+1
+ 385               	.LVL36:
+ 640:MiiBoot.c     **** 		clusteroffset--;
+ 386               		.loc 1 640 0
+ 387 008c 81E0      		ldi r24,1
+ 388 008e C81A      		sub r12,r24
+ 389 0090 D108      		sbc r13,__zero_reg__
+ 390               	.LVL37:
+ 391 0092 8A2D      		mov r24,r10
+ 392 0094 00C0      		rjmp .L31
+ 393               	.LVL38:
+ 394               	.L37:
+ 643:MiiBoot.c     **** 	templong = cluster - 2;
+ 395               		.loc 1 643 0
+ 396 0096 6701      		movw r12,r14
+ 397               	.LVL39:
+ 398 0098 82E0      		ldi r24,2
+ 399 009a C81A      		sub r12,r24
+ 400 009c D108      		sbc r13,__zero_reg__
+ 401               	.LVL40:
+ 402 009e E12C      		mov r14,__zero_reg__
+ 403 00a0 F12C      		mov r15,__zero_reg__
+ 404               	.LVL41:
+ 405               	.L34:
+ 645:MiiBoot.c     **** 	while(temp) {
+ 406               		.loc 1 645 0
+ 407 00a2 8820      		tst r8
+ 408 00a4 01F0      		breq .L38
+ 646:MiiBoot.c     **** 		templong <<= 1;	
+ 409               		.loc 1 646 0
+ 410 00a6 CC0C      		lsl r12
+ 411 00a8 DD1C      		rol r13
+ 412 00aa EE1C      		rol r14
+ 413 00ac FF1C      		rol r15
+ 414               	.LVL42:
+ 647:MiiBoot.c     **** 		temp >>= 1;
+ 415               		.loc 1 647 0
+ 416 00ae 8694      		lsr r8
+ 417               	.LVL43:
+ 418 00b0 00C0      		rjmp .L34
+ 419               	.L38:
+ 651:MiiBoot.c     **** 	mmc_start_read_block(templong + DataRegionStartSec + secoffset);
+ 420               		.loc 1 651 0
+ 421 00b2 6091 0000 		lds r22,DataRegionStartSec
+ 422 00b6 7091 0000 		lds r23,DataRegionStartSec+1
+ 423 00ba 8091 0000 		lds r24,DataRegionStartSec+2
+ 424 00be 9091 0000 		lds r25,DataRegionStartSec+3
+ 425 00c2 690D      		add r22,r9
+ 426 00c4 711D      		adc r23,__zero_reg__
+ 427 00c6 811D      		adc r24,__zero_reg__
+ 428 00c8 911D      		adc r25,__zero_reg__
+ 429 00ca 6C0D      		add r22,r12
+ 430 00cc 7D1D      		adc r23,r13
+ 431 00ce 8E1D      		adc r24,r14
+ 432 00d0 9F1D      		adc r25,r15
+ 433 00d2 0E94 0000 		call mmc_start_read_block
+ 434               	.LVL44:
+ 654:MiiBoot.c     **** 	file.sector_counter++;
+ 435               		.loc 1 654 0
+ 436 00d6 2196      		adiw r28,1
+ 437 00d8 D093 0000 		sts file+2+1,r29
+ 438 00dc C093 0000 		sts file+2,r28
+ 439               	.LBE9:
+ 440               	.LBE8:
+ 661:MiiBoot.c     **** 	    fat16_readfilesector();
+ 662:MiiBoot.c     **** 		file.next = file.next - 512;
+ 441               		.loc 1 662 0
+ 442 00e0 1250      		subi r17,2
+ 443 00e2 1093 0000 		sts file+8+1,r17
+ 444 00e6 0093 0000 		sts file+8,r16
+ 445               	.LVL45:
+ 446               	.L28:
+ 663:MiiBoot.c     **** 	}
+ 664:MiiBoot.c     **** 	file.size--;
+ 447               		.loc 1 664 0
+ 448 00ea 8091 0000 		lds r24,file+4
+ 449 00ee 9091 0000 		lds r25,file+4+1
+ 450 00f2 A091 0000 		lds r26,file+4+2
+ 451 00f6 B091 0000 		lds r27,file+4+3
+ 452 00fa 0197      		sbiw r24,1
+ 453 00fc A109      		sbc r26,__zero_reg__
+ 454 00fe B109      		sbc r27,__zero_reg__
+ 455 0100 8093 0000 		sts file+4,r24
+ 456 0104 9093 0000 		sts file+4+1,r25
+ 457 0108 A093 0000 		sts file+4+2,r26
+ 458 010c B093 0000 		sts file+4+3,r27
+ 665:MiiBoot.c     **** 	return *file.next++;
+ 459               		.loc 1 665 0
+ 460 0110 E091 0000 		lds r30,file+8
+ 461 0114 F091 0000 		lds r31,file+8+1
+ 462 0118 CF01      		movw r24,r30
+ 463 011a 0196      		adiw r24,1
+ 464 011c 9093 0000 		sts file+8+1,r25
+ 465 0120 8093 0000 		sts file+8,r24
+ 666:MiiBoot.c     **** }
+ 466               		.loc 1 666 0
+ 467 0124 8081      		ld r24,Z
+ 468               	/* epilogue start */
+ 469 0126 DF91      		pop r29
+ 470 0128 CF91      		pop r28
+ 471 012a 1F91      		pop r17
+ 472 012c 0F91      		pop r16
+ 473 012e FF90      		pop r15
+ 474 0130 EF90      		pop r14
+ 475 0132 DF90      		pop r13
+ 476 0134 CF90      		pop r12
+ 477 0136 BF90      		pop r11
+ 478 0138 AF90      		pop r10
+ 479 013a 9F90      		pop r9
+ 480 013c 8F90      		pop r8
+ 481 013e 0895      		ret
+ 482               		.cfi_endproc
+ 483               	.LFE19:
+ 485               		.section	.text.unlikely.file_read_hex,"ax",@progbits
+ 487               	file_read_hex:
+ 488               	.LFB21:
+ 667:MiiBoot.c     **** 
+ 668:MiiBoot.c     **** static char gethexnib(char a) {
+ 669:MiiBoot.c     **** 	if(a >= 'a') {
+ 670:MiiBoot.c     **** 		return (a - 'a' + 0x0a);
+ 671:MiiBoot.c     **** 	} else if(a >= 'A') {
+ 672:MiiBoot.c     **** 		return (a - 'A' + 0x0a);
+ 673:MiiBoot.c     **** 	} else if(a >= '0') {
+ 674:MiiBoot.c     **** 		return(a - '0');
+ 675:MiiBoot.c     **** 	}
+ 676:MiiBoot.c     **** 	return a;
+ 677:MiiBoot.c     **** }
+ 678:MiiBoot.c     **** 
+ 679:MiiBoot.c     **** static uint8_t file_read_hex(void) {
+ 489               		.loc 1 679 0
+ 490               		.cfi_startproc
+ 491 0000 CF93      		push r28
+ 492               	.LCFI18:
+ 493               		.cfi_def_cfa_offset 3
+ 494               		.cfi_offset 28, -2
+ 495               	/* prologue: function */
+ 496               	/* frame size = 0 */
+ 497               	/* stack size = 1 */
+ 498               	.L__stack_usage = 1
+ 680:MiiBoot.c     **** 	return (gethexnib(file_read_byte()) << 4) + gethexnib(file_read_byte());
+ 499               		.loc 1 680 0
+ 500 0002 0E94 0000 		call file_read_byte
+ 501               	.LVL46:
+ 502               	.LBB14:
+ 503               	.LBB15:
+ 669:MiiBoot.c     **** 	if(a >= 'a') {
+ 504               		.loc 1 669 0
+ 505 0006 8136      		cpi r24,lo8(97)
+ 506 0008 00F0      		brlo .L40
+ 670:MiiBoot.c     **** 		return (a - 'a' + 0x0a);
+ 507               		.loc 1 670 0
+ 508 000a 8755      		subi r24,lo8(-(-87))
+ 509               	.LVL47:
+ 510 000c 00C0      		rjmp .L41
+ 511               	.LVL48:
+ 512               	.L40:
+ 671:MiiBoot.c     **** 	} else if(a >= 'A') {
+ 513               		.loc 1 671 0
+ 514 000e 8134      		cpi r24,lo8(65)
+ 515 0010 00F0      		brlo .L42
+ 672:MiiBoot.c     **** 		return (a - 'A' + 0x0a);
+ 516               		.loc 1 672 0
+ 517 0012 8753      		subi r24,lo8(-(-55))
+ 518               	.LVL49:
+ 519 0014 00C0      		rjmp .L41
+ 520               	.LVL50:
+ 521               	.L42:
+ 673:MiiBoot.c     **** 	} else if(a >= '0') {
+ 522               		.loc 1 673 0
+ 523 0016 8033      		cpi r24,lo8(48)
+ 524 0018 00F0      		brlo .L41
+ 674:MiiBoot.c     **** 		return(a - '0');
+ 525               		.loc 1 674 0
+ 526 001a 8053      		subi r24,lo8(-(-48))
+ 527               	.LVL51:
+ 528               	.L41:
+ 529               	.LBE15:
+ 530               	.LBE14:
+ 531               		.loc 1 680 0
+ 532 001c C82F      		mov r28,r24
+ 533 001e C295      		swap r28
+ 534 0020 C07F      		andi r28,lo8(-16)
+ 535 0022 0E94 0000 		call file_read_byte
+ 536               	.LVL52:
+ 537               	.LBB16:
+ 538               	.LBB17:
+ 669:MiiBoot.c     **** 	if(a >= 'a') {
+ 539               		.loc 1 669 0
+ 540 0026 8136      		cpi r24,lo8(97)
+ 541 0028 00F0      		brlo .L43
+ 670:MiiBoot.c     **** 		return (a - 'a' + 0x0a);
+ 542               		.loc 1 670 0
+ 543 002a 8755      		subi r24,lo8(-(-87))
+ 544               	.LVL53:
+ 545 002c 00C0      		rjmp .L44
+ 546               	.LVL54:
+ 547               	.L43:
+ 671:MiiBoot.c     **** 	} else if(a >= 'A') {
+ 548               		.loc 1 671 0
+ 549 002e 8134      		cpi r24,lo8(65)
+ 550 0030 00F0      		brlo .L45
+ 672:MiiBoot.c     **** 		return (a - 'A' + 0x0a);
+ 551               		.loc 1 672 0
+ 552 0032 8753      		subi r24,lo8(-(-55))
+ 553               	.LVL55:
+ 554 0034 00C0      		rjmp .L44
+ 555               	.LVL56:
+ 556               	.L45:
+ 673:MiiBoot.c     **** 	} else if(a >= '0') {
+ 557               		.loc 1 673 0
+ 558 0036 8033      		cpi r24,lo8(48)
+ 559 0038 00F0      		brlo .L44
+ 674:MiiBoot.c     **** 		return(a - '0');
+ 560               		.loc 1 674 0
+ 561 003a 8053      		subi r24,lo8(-(-48))
+ 562               	.LVL57:
+ 563               	.L44:
+ 564               	.LBE17:
+ 565               	.LBE16:
+ 681:MiiBoot.c     **** }
+ 566               		.loc 1 681 0
+ 567 003c 8C0F      		add r24,r28
+ 568               	/* epilogue start */
+ 569 003e CF91      		pop r28
+ 570 0040 0895      		ret
+ 571               		.cfi_endproc
+ 572               	.LFE21:
+ 574               		.section	.text.UART_init,"ax",@progbits
+ 575               	.global	UART_init
+ 577               	UART_init:
+ 578               	.LFB1:
+  66:MiiBoot.c     **** void UART_init(void) {
+ 579               		.loc 1 66 0
+ 580               		.cfi_startproc
+ 581               	/* prologue: function */
+ 582               	/* frame size = 0 */
+ 583               	/* stack size = 0 */
+ 584               	.L__stack_usage = 0
+  68:MiiBoot.c     ****    UBRR0L = 12; // 38400 @ 8MHz
+ 585               		.loc 1 68 0
+ 586 0000 8CE0      		ldi r24,lo8(12)
+ 587 0002 8093 C400 		sts 196,r24
+  74:MiiBoot.c     ****     UCSR0B = (1 << TXEN0);
+ 588               		.loc 1 74 0
+ 589 0006 88E0      		ldi r24,lo8(8)
+ 590 0008 8093 C100 		sts 193,r24
+ 591 000c 0895      		ret
+ 592               		.cfi_endproc
+ 593               	.LFE1:
+ 595               		.section	.text.UART_put,"ax",@progbits
+ 596               	.global	UART_put
+ 598               	UART_put:
+ 599               	.LFB2:
+  78:MiiBoot.c     **** void UART_put(uint8_t c) {
+ 600               		.loc 1 78 0
+ 601               		.cfi_startproc
+ 602               	/* prologue: function */
+ 603               	/* frame size = 0 */
+ 604               	/* stack size = 0 */
+ 605               	.L__stack_usage = 0
+ 606               	.LVL58:
+ 607               	.L51:
+  79:MiiBoot.c     ****     while (!(UCSR0A & (1 << UDRE0)));
+ 608               		.loc 1 79 0 discriminator 1
+ 609 0000 9091 C000 		lds r25,192
+ 610 0004 95FF      		sbrs r25,5
+ 611 0006 00C0      		rjmp .L51
+  80:MiiBoot.c     ****     UDR0 = c;
+ 612               		.loc 1 80 0
+ 613 0008 8093 C600 		sts 198,r24
+ 614 000c 0895      		ret
+ 615               		.cfi_endproc
+ 616               	.LFE2:
+ 618               		.section	.text.UART_puts,"ax",@progbits
+ 619               	.global	UART_puts
+ 621               	UART_puts:
+ 622               	.LFB3:
+  85:MiiBoot.c     **** void UART_puts(const char * str) {
+ 623               		.loc 1 85 0
+ 624               		.cfi_startproc
+ 625               	.LVL59:
+ 626 0000 CF93      		push r28
+ 627               	.LCFI19:
+ 628               		.cfi_def_cfa_offset 3
+ 629               		.cfi_offset 28, -2
+ 630 0002 DF93      		push r29
+ 631               	.LCFI20:
+ 632               		.cfi_def_cfa_offset 4
+ 633               		.cfi_offset 29, -3
+ 634               	/* prologue: function */
+ 635               	/* frame size = 0 */
+ 636               	/* stack size = 2 */
+ 637               	.L__stack_usage = 2
+ 638 0004 EC01      		movw r28,r24
+ 639               	.LVL60:
+ 640               	.L54:
+ 641               	.LBB18:
+  88:MiiBoot.c     ****         c = pgm_read_byte(str++);
+ 642               		.loc 1 88 0
+ 643 0006 FE01      		movw r30,r28
+ 644               	/* #APP */
+ 645               	 ;  88 "MiiBoot.c" 1
+ 646 0008 8491      		lpm r24, Z
+ 647               		
+ 648               	 ;  0 "" 2
+ 649               	.LVL61:
+ 650               	/* #NOAPP */
+ 651               	.LBE18:
+  89:MiiBoot.c     ****         if (c) {
+ 652               		.loc 1 89 0
+ 653 000a 8823      		tst r24
+ 654 000c 01F0      		breq .L52
+ 655               	.LBB19:
+  88:MiiBoot.c     ****         c = pgm_read_byte(str++);
+ 656               		.loc 1 88 0
+ 657 000e 2196      		adiw r28,1
+ 658               	.LVL62:
+ 659               	.LBE19:
+  90:MiiBoot.c     ****             UART_put(c);
+ 660               		.loc 1 90 0
+ 661 0010 0E94 0000 		call UART_put
+ 662               	.LVL63:
+ 663 0014 00C0      		rjmp .L54
+ 664               	.LVL64:
+ 665               	.L52:
+ 666               	/* epilogue start */
+  93:MiiBoot.c     **** }
+ 667               		.loc 1 93 0
+ 668 0016 DF91      		pop r29
+ 669 0018 CF91      		pop r28
+ 670               	.LVL65:
+ 671 001a 0895      		ret
+ 672               		.cfi_endproc
+ 673               	.LFE3:
+ 675               		.section	.text.UART_newline,"ax",@progbits
+ 676               	.global	UART_newline
+ 678               	UART_newline:
+ 679               	.LFB4:
+  96:MiiBoot.c     **** void UART_newline(void){
+ 680               		.loc 1 96 0
+ 681               		.cfi_startproc
+ 682               	/* prologue: function */
+ 683               	/* frame size = 0 */
+ 684               	/* stack size = 0 */
+ 685               	.L__stack_usage = 0
+  97:MiiBoot.c     ****     UART_put('\r');
+ 686               		.loc 1 97 0
+ 687 0000 8DE0      		ldi r24,lo8(13)
+ 688 0002 0E94 0000 		call UART_put
+ 689               	.LVL66:
+  98:MiiBoot.c     ****     UART_put('\n');
+ 690               		.loc 1 98 0
+ 691 0006 8AE0      		ldi r24,lo8(10)
+ 692 0008 0C94 0000 		jmp UART_put
+ 693               	.LVL67:
+ 694               		.cfi_endproc
+ 695               	.LFE4:
+ 697               		.section	.text.UART_putnibble,"ax",@progbits
+ 698               	.global	UART_putnibble
+ 700               	UART_putnibble:
+ 701               	.LFB5:
+ 103:MiiBoot.c     **** void UART_putnibble(uint8_t c) {
+ 702               		.loc 1 103 0
+ 703               		.cfi_startproc
+ 704               	.LVL68:
+ 705               	/* prologue: function */
+ 706               	/* frame size = 0 */
+ 707               	/* stack size = 0 */
+ 708               	.L__stack_usage = 0
+ 104:MiiBoot.c     ****     if (c < 10) {
+ 709               		.loc 1 104 0
+ 710 0000 8A30      		cpi r24,lo8(10)
+ 711 0002 00F4      		brsh .L57
+ 105:MiiBoot.c     ****         UART_put('0' + c);
+ 712               		.loc 1 105 0
+ 713 0004 805D      		subi r24,lo8(-(48))
+ 714               	.LVL69:
+ 715 0006 00C0      		rjmp .L58
+ 716               	.LVL70:
+ 717               	.L57:
+ 108:MiiBoot.c     ****         UART_put('A' + c - 10);
+ 718               		.loc 1 108 0
+ 719 0008 895C      		subi r24,lo8(-(55))
+ 720               	.LVL71:
+ 721               	.L58:
+ 722 000a 0C94 0000 		jmp UART_put
+ 723               	.LVL72:
+ 724               		.cfi_endproc
+ 725               	.LFE5:
+ 727               		.section	.text.UART_puthex,"ax",@progbits
+ 728               	.global	UART_puthex
+ 730               	UART_puthex:
+ 731               	.LFB6:
+ 113:MiiBoot.c     **** void UART_puthex(uint8_t c) {
+ 732               		.loc 1 113 0
+ 733               		.cfi_startproc
+ 734               	.LVL73:
+ 735 0000 CF93      		push r28
+ 736               	.LCFI21:
+ 737               		.cfi_def_cfa_offset 3
+ 738               		.cfi_offset 28, -2
+ 739               	/* prologue: function */
+ 740               	/* frame size = 0 */
+ 741               	/* stack size = 1 */
+ 742               	.L__stack_usage = 1
+ 743 0002 C82F      		mov r28,r24
+ 114:MiiBoot.c     ****     UART_putnibble(c >> 4);
+ 744               		.loc 1 114 0
+ 745 0004 8295      		swap r24
+ 746               	.LVL74:
+ 747 0006 8F70      		andi r24,lo8(15)
+ 748 0008 0E94 0000 		call UART_putnibble
+ 749               	.LVL75:
+ 115:MiiBoot.c     ****     UART_putnibble(c & 0x0F);
+ 750               		.loc 1 115 0
+ 751 000c 8C2F      		mov r24,r28
+ 752 000e 8F70      		andi r24,lo8(15)
+ 753               	/* epilogue start */
+ 116:MiiBoot.c     **** }
+ 754               		.loc 1 116 0
+ 755 0010 CF91      		pop r28
+ 756               	.LVL76:
+ 115:MiiBoot.c     ****     UART_putnibble(c & 0x0F);
+ 757               		.loc 1 115 0
+ 758 0012 0C94 0000 		jmp UART_putnibble
+ 759               	.LVL77:
+ 760               		.cfi_endproc
+ 761               	.LFE6:
+ 763               		.section	.text.UART_puthex16,"ax",@progbits
+ 764               	.global	UART_puthex16
+ 766               	UART_puthex16:
+ 767               	.LFB7:
+ 119:MiiBoot.c     **** void UART_puthex16(uint16_t n) {
+ 768               		.loc 1 119 0
+ 769               		.cfi_startproc
+ 770               	.LVL78:
+ 771 0000 CF93      		push r28
+ 772               	.LCFI22:
+ 773               		.cfi_def_cfa_offset 3
+ 774               		.cfi_offset 28, -2
+ 775 0002 DF93      		push r29
+ 776               	.LCFI23:
+ 777               		.cfi_def_cfa_offset 4
+ 778               		.cfi_offset 29, -3
+ 779               	/* prologue: function */
+ 780               	/* frame size = 0 */
+ 781               	/* stack size = 2 */
+ 782               	.L__stack_usage = 2
+ 783 0004 EC01      		movw r28,r24
+ 120:MiiBoot.c     ****     UART_puthex(n >> 8);
+ 784               		.loc 1 120 0
+ 785 0006 8D2F      		mov r24,r29
+ 786               	.LVL79:
+ 787 0008 0E94 0000 		call UART_puthex
+ 788               	.LVL80:
+ 121:MiiBoot.c     ****     UART_puthex(n & 0xFF);
+ 789               		.loc 1 121 0
+ 790 000c 8C2F      		mov r24,r28
+ 791               	/* epilogue start */
+ 122:MiiBoot.c     **** }
+ 792               		.loc 1 122 0
+ 793 000e DF91      		pop r29
+ 794 0010 CF91      		pop r28
+ 795               	.LVL81:
+ 121:MiiBoot.c     ****     UART_puthex(n & 0xFF);
+ 796               		.loc 1 121 0
+ 797 0012 0C94 0000 		jmp UART_puthex
+ 798               	.LVL82:
+ 799               		.cfi_endproc
+ 800               	.LFE7:
+ 802               		.section	.text.UART_putsP,"ax",@progbits
+ 803               	.global	UART_putsP
+ 805               	UART_putsP:
+ 806               	.LFB8:
+ 127:MiiBoot.c     **** void UART_putsP(const char * str, uint16_t n) {
+ 807               		.loc 1 127 0
+ 808               		.cfi_startproc
+ 809               	.LVL83:
+ 810 0000 CF93      		push r28
+ 811               	.LCFI24:
+ 812               		.cfi_def_cfa_offset 3
+ 813               		.cfi_offset 28, -2
+ 814 0002 DF93      		push r29
+ 815               	.LCFI25:
+ 816               		.cfi_def_cfa_offset 4
+ 817               		.cfi_offset 29, -3
+ 818               	/* prologue: function */
+ 819               	/* frame size = 0 */
+ 820               	/* stack size = 2 */
+ 821               	.L__stack_usage = 2
+ 822 0004 EB01      		movw r28,r22
+ 128:MiiBoot.c     ****     UART_puts(str);
+ 823               		.loc 1 128 0
+ 824 0006 0E94 0000 		call UART_puts
+ 825               	.LVL84:
+ 129:MiiBoot.c     ****     UART_puthex16(n);
+ 826               		.loc 1 129 0
+ 827 000a CE01      		movw r24,r28
+ 828 000c 0E94 0000 		call UART_puthex16
+ 829               	.LVL85:
+ 830               	/* epilogue start */
+ 131:MiiBoot.c     **** }
+ 831               		.loc 1 131 0
+ 832 0010 DF91      		pop r29
+ 833 0012 CF91      		pop r28
+ 834               	.LVL86:
+ 130:MiiBoot.c     ****     UART_newline();
+ 835               		.loc 1 130 0
+ 836 0014 0C94 0000 		jmp UART_newline
+ 837               	.LVL87:
+ 838               		.cfi_endproc
+ 839               	.LFE8:
+ 841               		.section	.text.UART_dumpsector,"ax",@progbits
+ 842               	.global	UART_dumpsector
+ 844               	UART_dumpsector:
+ 845               	.LFB9:
+ 135:MiiBoot.c     **** void UART_dumpsector(uint8_t * Buff) {
+ 846               		.loc 1 135 0
+ 847               		.cfi_startproc
+ 848               	.LVL88:
+ 849 0000 CF92      		push r12
+ 850               	.LCFI26:
+ 851               		.cfi_def_cfa_offset 3
+ 852               		.cfi_offset 12, -2
+ 853 0002 DF92      		push r13
+ 854               	.LCFI27:
+ 855               		.cfi_def_cfa_offset 4
+ 856               		.cfi_offset 13, -3
+ 857 0004 EF92      		push r14
+ 858               	.LCFI28:
+ 859               		.cfi_def_cfa_offset 5
+ 860               		.cfi_offset 14, -4
+ 861 0006 FF92      		push r15
+ 862               	.LCFI29:
+ 863               		.cfi_def_cfa_offset 6
+ 864               		.cfi_offset 15, -5
+ 865 0008 0F93      		push r16
+ 866               	.LCFI30:
+ 867               		.cfi_def_cfa_offset 7
+ 868               		.cfi_offset 16, -6
+ 869 000a 1F93      		push r17
+ 870               	.LCFI31:
+ 871               		.cfi_def_cfa_offset 8
+ 872               		.cfi_offset 17, -7
+ 873 000c CF93      		push r28
+ 874               	.LCFI32:
+ 875               		.cfi_def_cfa_offset 9
+ 876               		.cfi_offset 28, -8
+ 877 000e DF93      		push r29
+ 878               	.LCFI33:
+ 879               		.cfi_def_cfa_offset 10
+ 880               		.cfi_offset 29, -9
+ 881               	/* prologue: function */
+ 882               	/* frame size = 0 */
+ 883               	/* stack size = 8 */
+ 884               	.L__stack_usage = 8
+ 885 0010 6C01      		movw r12,r24
+ 886               	.LVL89:
+ 887 0012 7C01      		movw r14,r24
+ 888               	.LBB20:
+ 136:MiiBoot.c     ****     for (uint16_t i=0; i<512; i++) {
+ 889               		.loc 1 136 0
+ 890 0014 C0E0      		ldi r28,0
+ 891 0016 D0E0      		ldi r29,0
+ 892               	.LVL90:
+ 893               	.L68:
+ 137:MiiBoot.c     ****         if ((i % 16) == 0) {
+ 894               		.loc 1 137 0
+ 895 0018 CE01      		movw r24,r28
+ 896 001a 8F70      		andi r24,15
+ 897 001c 9927      		clr r25
+ 898 001e 892B      		or r24,r25
+ 899 0020 01F4      		brne .L63
+ 138:MiiBoot.c     ****             UART_put(' ');
+ 900               		.loc 1 138 0
+ 901 0022 80E2      		ldi r24,lo8(32)
+ 902 0024 0E94 0000 		call UART_put
+ 903               	.LVL91:
+ 904               	.LBB21:
+ 139:MiiBoot.c     ****             for(uint16_t j=(i -16); j<=i; j++) {
+ 905               		.loc 1 139 0
+ 906 0028 8E01      		movw r16,r28
+ 907 002a 0051      		subi r16,16
+ 908 002c 1109      		sbc r17,__zero_reg__
+ 909               	.LVL92:
+ 910               	.L64:
+ 139:MiiBoot.c     ****             for(uint16_t j=(i -16); j<=i; j++) {
+ 911               		.loc 1 139 0 is_stmt 0 discriminator 1
+ 912 002e C017      		cp r28,r16
+ 913 0030 D107      		cpc r29,r17
+ 914 0032 00F0      		brlo .L70
+ 915 0034 F601      		movw r30,r12
+ 916 0036 E00F      		add r30,r16
+ 917 0038 F11F      		adc r31,r17
+ 140:MiiBoot.c     ****                 UART_put(((Buff[j]>=(uint8_t)32) && (Buff[j]<(uint8_t)127)) ? Buff[j] : '.');
+ 918               		.loc 1 140 0 is_stmt 1
+ 919 003a 8081      		ld r24,Z
+ 920 003c 90EE      		ldi r25,lo8(-32)
+ 921 003e 980F      		add r25,r24
+ 922 0040 9F35      		cpi r25,lo8(95)
+ 923 0042 00F0      		brlo .L65
+ 924 0044 8EE2      		ldi r24,lo8(46)
+ 925               	.L65:
+ 140:MiiBoot.c     ****                 UART_put(((Buff[j]>=(uint8_t)32) && (Buff[j]<(uint8_t)127)) ? Buff[j] : '.');
+ 926               		.loc 1 140 0 is_stmt 0 discriminator 3
+ 927 0046 0E94 0000 		call UART_put
+ 928               	.LVL93:
+ 139:MiiBoot.c     ****             for(uint16_t j=(i -16); j<=i; j++) {
+ 929               		.loc 1 139 0 is_stmt 1 discriminator 3
+ 930 004a 0F5F      		subi r16,-1
+ 931 004c 1F4F      		sbci r17,-1
+ 932               	.LVL94:
+ 933 004e 00C0      		rjmp .L64
+ 934               	.L70:
+ 935               	.LBE21:
+ 142:MiiBoot.c     ****             UART_newline();
+ 936               		.loc 1 142 0
+ 937 0050 0E94 0000 		call UART_newline
+ 938               	.LVL95:
+ 939               	.L63:
+ 144:MiiBoot.c     ****         UART_puthex(Buff[i]);
+ 940               		.loc 1 144 0
+ 941 0054 F701      		movw r30,r14
+ 942 0056 8191      		ld r24,Z+
+ 943 0058 7F01      		movw r14,r30
+ 944 005a 0E94 0000 		call UART_puthex
+ 945               	.LVL96:
+ 145:MiiBoot.c     ****         UART_put(' ');
+ 946               		.loc 1 145 0
+ 947 005e 80E2      		ldi r24,lo8(32)
+ 948 0060 0E94 0000 		call UART_put
+ 949               	.LVL97:
+ 136:MiiBoot.c     ****     for (uint16_t i=0; i<512; i++) {
+ 950               		.loc 1 136 0
+ 951 0064 2196      		adiw r28,1
+ 952               	.LVL98:
+ 953 0066 C115      		cp r28,__zero_reg__
+ 954 0068 F2E0      		ldi r31,2
+ 955 006a DF07      		cpc r29,r31
+ 956 006c 01F4      		brne .L68
+ 957               	/* epilogue start */
+ 958               	.LBE20:
+ 148:MiiBoot.c     **** }
+ 959               		.loc 1 148 0
+ 960 006e DF91      		pop r29
+ 961 0070 CF91      		pop r28
+ 962               	.LVL99:
+ 963 0072 1F91      		pop r17
+ 964 0074 0F91      		pop r16
+ 965 0076 FF90      		pop r15
+ 966 0078 EF90      		pop r14
+ 967 007a DF90      		pop r13
+ 968 007c CF90      		pop r12
+ 969               	.LVL100:
+ 147:MiiBoot.c     ****     UART_newline();
+ 970               		.loc 1 147 0
+ 971 007e 0C94 0000 		jmp UART_newline
+ 972               	.LVL101:
+ 973               		.cfi_endproc
+ 974               	.LFE9:
+ 976               		.section	.text.write_flash_page,"ax",@progbits
+ 977               	.global	write_flash_page
+ 979               	write_flash_page:
+ 980               	.LFB10:
+ 168:MiiBoot.c     **** {
+ 981               		.loc 1 168 0
+ 982               		.cfi_startproc
+ 983               	/* prologue: function */
+ 984               	/* frame size = 0 */
+ 985               	/* stack size = 0 */
+ 986               	.L__stack_usage = 0
+ 987               	.L73:
+ 171:MiiBoot.c     **** 	eeprom_busy_wait ();
+ 988               		.loc 1 171 0 discriminator 1
+ 989 0000 F999      		sbic 0x1f,1
+ 990 0002 00C0      		rjmp .L73
+ 173:MiiBoot.c     **** 	boot_page_erase (address);
+ 991               		.loc 1 173 0
+ 992 0004 2091 0000 		lds r18,address
+ 993 0008 3091 0000 		lds r19,address+1
+ 994 000c 83E0      		ldi r24,lo8(3)
+ 995 000e F901      		movw r30,r18
+ 996               	/* #APP */
+ 997               	 ;  173 "MiiBoot.c" 1
+ 998 0010 8093 5700 		sts 87, r24
+ 999 0014 E895      		spm
+ 1000               		
+ 1001               	 ;  0 "" 2
+ 1002               	/* #NOAPP */
+ 1003               	.L75:
+ 174:MiiBoot.c     **** 	boot_spm_busy_wait ();      // Wait until the memory is erased.
+ 1004               		.loc 1 174 0 discriminator 1
+ 1005 0016 07B6      		in __tmp_reg__,0x37
+ 1006 0018 00FC      		sbrc __tmp_reg__,0
+ 1007 001a 00C0      		rjmp .L75
+ 1008 001c A0E0      		ldi r26,lo8(pagebuffer)
+ 1009 001e B0E0      		ldi r27,hi8(pagebuffer)
+ 174:MiiBoot.c     **** 	boot_spm_busy_wait ();      // Wait until the memory is erased.
+ 1010               		.loc 1 174 0 is_stmt 0
+ 1011 0020 80E0      		ldi r24,0
+ 1012 0022 90E0      		ldi r25,0
+ 1013               	.LBB22:
+ 180:MiiBoot.c     **** 		boot_page_fill (address + i, w);
+ 1014               		.loc 1 180 0 is_stmt 1
+ 1015 0024 61E0      		ldi r22,lo8(1)
+ 1016               	.L77:
+ 1017               	.LVL102:
+ 179:MiiBoot.c     **** 		uint16_t w = *((uint16_t*)(pagebuffer + i));
+ 1018               		.loc 1 179 0 discriminator 2
+ 1019 0026 4D91      		ld r20,X+
+ 1020 0028 5D91      		ld r21,X+
+ 1021               	.LVL103:
+ 1022 002a FC01      		movw r30,r24
+ 1023 002c E20F      		add r30,r18
+ 1024 002e F31F      		adc r31,r19
+ 180:MiiBoot.c     **** 		boot_page_fill (address + i, w);
+ 1025               		.loc 1 180 0 discriminator 2
+ 1026               	/* #APP */
+ 1027               	 ;  180 "MiiBoot.c" 1
+ 1028 0030 0A01      		movw  r0, r20
+ 1029 0032 6093 5700 		sts 87, r22
+ 1030 0036 E895      		spm
+ 1031 0038 1124      		clr  r1
+ 1032               		
+ 1033               	 ;  0 "" 2
+ 1034               	/* #NOAPP */
+ 1035               	.LBE22:
+ 176:MiiBoot.c     **** 	for (i=0; i<SPM_PAGESIZE; i+=2)
+ 1036               		.loc 1 176 0 discriminator 2
+ 1037 003a 0296      		adiw r24,2
+ 1038               	.LVL104:
+ 1039 003c 8038      		cpi r24,-128
+ 1040 003e 9105      		cpc r25,__zero_reg__
+ 1041 0040 01F4      		brne .L77
+ 183:MiiBoot.c     **** 	boot_page_write(address);     // Store buffer in flash page.
+ 1042               		.loc 1 183 0
+ 1043 0042 85E0      		ldi r24,lo8(5)
+ 1044               	.LVL105:
+ 1045 0044 F901      		movw r30,r18
+ 1046               	/* #APP */
+ 1047               	 ;  183 "MiiBoot.c" 1
+ 1048 0046 8093 5700 		sts 87, r24
+ 1049 004a E895      		spm
+ 1050               		
+ 1051               	 ;  0 "" 2
+ 1052               	/* #NOAPP */
+ 1053               	.L79:
+ 184:MiiBoot.c     **** 	boot_spm_busy_wait();            // Wait until the memory is written.
+ 1054               		.loc 1 184 0 discriminator 1
+ 1055 004c 07B6      		in __tmp_reg__,0x37
+ 1056 004e 00FC      		sbrc __tmp_reg__,0
+ 1057 0050 00C0      		rjmp .L79
+ 186:MiiBoot.c     **** 	boot_rww_enable ();
+ 1058               		.loc 1 186 0
+ 1059 0052 81E1      		ldi r24,lo8(17)
+ 1060               	/* #APP */
+ 1061               	 ;  186 "MiiBoot.c" 1
+ 1062 0054 8093 5700 		sts 87, r24
+ 1063 0058 E895      		spm
+ 1064               		
+ 1065               	 ;  0 "" 2
+ 1066               	/* #NOAPP */
+ 1067 005a 0895      		ret
+ 1068               		.cfi_endproc
+ 1069               	.LFE10:
+ 1071               		.section	.init9,"ax",@progbits
+ 1072               	.global	main
+ 1074               	main:
+ 1075               	.LFB24:
+ 682:MiiBoot.c     **** 
+ 683:MiiBoot.c     **** static inline void read_hex_file(void) {
+ 684:MiiBoot.c     **** 	// read file and convert it from intel hex and flash it
+ 685:MiiBoot.c     ****     uint8_t num_flash_words = 0;
+ 686:MiiBoot.c     **** 	uint8_t* out = pagebuffer;
+ 687:MiiBoot.c     ****     address = 0;
+ 688:MiiBoot.c     **** 	while (file.size)
+ 689:MiiBoot.c     **** 	{
+ 690:MiiBoot.c     **** 		if (num_flash_words)
+ 691:MiiBoot.c     **** 		{
+ 692:MiiBoot.c     **** 			// read (de-hexify)
+ 693:MiiBoot.c     **** 			*out++ = file_read_hex();
+ 694:MiiBoot.c     **** 			num_flash_words--;
+ 695:MiiBoot.c     **** 		
+ 696:MiiBoot.c     **** 			// if pagebuffer is full
+ 697:MiiBoot.c     **** 			if (out - pagebuffer == SPM_PAGESIZE) {
+ 698:MiiBoot.c     **** 			    // write page
+ 699:MiiBoot.c     **** #ifdef BOOT_LOADER
+ 700:MiiBoot.c     **** 			    write_flash_page();
+ 701:MiiBoot.c     **** #endif
+ 702:MiiBoot.c     **** 			    address += SPM_PAGESIZE;
+ 703:MiiBoot.c     **** 				out = pagebuffer;
+ 704:MiiBoot.c     **** 			}
+ 705:MiiBoot.c     **** 		} 
+ 706:MiiBoot.c     **** 		else
+ 707:MiiBoot.c     **** 		{
+ 708:MiiBoot.c     **** 			// skip bytes until we find another ':'
+ 709:MiiBoot.c     **** 			if (file_read_byte() == ':') {
+ 710:MiiBoot.c     **** 				num_flash_words = file_read_hex();
+ 711:MiiBoot.c     **** 				file.next+=4; /* skip 4 bytes, address */
+ 712:MiiBoot.c     **** 				if (file_read_hex()==1) break; //01 is EOF
+ 713:MiiBoot.c     **** 			}
+ 714:MiiBoot.c     **** 		}
+ 715:MiiBoot.c     **** 	}
+ 716:MiiBoot.c     **** #ifdef BOOT_LOADER
+ 717:MiiBoot.c     **** 	if (out != pagebuffer) write_flash_page();
+ 718:MiiBoot.c     **** #endif
+ 719:MiiBoot.c     **** }
+ 720:MiiBoot.c     **** 
+ 721:MiiBoot.c     **** static inline void read_eep_file(void) {
+ 722:MiiBoot.c     **** 	// read file and convert it from intel hex and flash it
+ 723:MiiBoot.c     ****     uint8_t num_flash_words = 0;
+ 724:MiiBoot.c     ****     address = 0;
+ 725:MiiBoot.c     ****     while (file.size) {
+ 726:MiiBoot.c     **** 	if (num_flash_words) {
+ 727:MiiBoot.c     ****              eeprom_update_byte((uint8_t *)address++, file_read_hex());
+ 728:MiiBoot.c     **** 	     num_flash_words--;
+ 729:MiiBoot.c     ****          } else {
+ 730:MiiBoot.c     **** 	  // skip bytes until we find another ':'
+ 731:MiiBoot.c     **** 	  if (file_read_byte() == ':') {
+ 732:MiiBoot.c     ****             num_flash_words = file_read_hex();
+ 733:MiiBoot.c     **** 	    address=file_read_hex()<<8 | file_read_hex(); /* Read new address */
+ 734:MiiBoot.c     ****             if (file_read_hex()==1) break;
+ 735:MiiBoot.c     **** 	  }
+ 736:MiiBoot.c     ****         }
+ 737:MiiBoot.c     ****     }
+ 738:MiiBoot.c     **** }
+ 739:MiiBoot.c     **** 
+ 740:MiiBoot.c     **** /* main program starts here */
+ 741:MiiBoot.c     **** #ifdef BOOT_LOADER
+ 742:MiiBoot.c     **** int main(void)
+ 743:MiiBoot.c     **** #else
+ 744:MiiBoot.c     **** int main(void)
+ 745:MiiBoot.c     **** #endif
+ 746:MiiBoot.c     ****  {
+ 1076               		.loc 1 746 0
+ 1077               		.cfi_startproc
+ 1078               	/* prologue: naked */
+ 1079               	/* frame size = 0 */
+ 1080               	/* stack size = 0 */
+ 1081               	.L__stack_usage = 0
+ 747:MiiBoot.c     **** 	/* here we learn how we were reset */
+ 748:MiiBoot.c     **** 	reset_reason = MCUSR;
+ 1082               		.loc 1 748 0
+ 1083 0000 84B7      		in r24,0x34
+ 1084 0002 8093 0000 		sts reset_reason,r24
+ 749:MiiBoot.c     **** 	MCUSR = 0;
+ 1085               		.loc 1 749 0
+ 1086 0006 14BE      		out 0x34,__zero_reg__
+ 750:MiiBoot.c     **** 
+ 751:MiiBoot.c     **** 	/* stop watchdog */
+ 752:MiiBoot.c     **** 	WDTCSR |= _BV(WDCE) | _BV(WDE);
+ 1087               		.loc 1 752 0
+ 1088 0008 8091 6000 		lds r24,96
+ 1089 000c 8861      		ori r24,lo8(24)
+ 1090 000e 8093 6000 		sts 96,r24
+ 753:MiiBoot.c     **** 	WDTCSR = 0;
+ 1091               		.loc 1 753 0
+ 1092 0012 1092 6000 		sts 96,__zero_reg__
+ 754:MiiBoot.c     **** #ifdef BOOT_LOADER
+ 755:MiiBoot.c     **** 	/* start app right ahead if this was not an external reset */
+ 756:MiiBoot.c     **** 	/* this means that all the code below this line is only executed on external reset */
+ 757:MiiBoot.c     **** 	if (!(reset_reason & _BV(EXTRF))) app_start();
+ 1093               		.loc 1 757 0
+ 1094 0016 8091 0000 		lds r24,reset_reason
+ 1095 001a 81FD      		sbrc r24,1
+ 1096 001c 00C0      		rjmp .L81
+ 1097               		.loc 1 757 0 is_stmt 0 discriminator 1
+ 1098 001e E091 0000 		lds r30,app_start
+ 1099 0022 F091 0000 		lds r31,app_start+1
+ 1100 0026 0995      		icall
+ 1101               	.LVL106:
+ 1102               	.L81:
+ 758:MiiBoot.c     **** 
+ 759:MiiBoot.c     **** 	/* this is needed because of the __attribute__ naked, section .init 9 */
+ 760:MiiBoot.c     **** 	/* from now, we can call functions :-) */
+ 761:MiiBoot.c     **** 	asm volatile ( "clr __zero_reg__" );
+ 1103               		.loc 1 761 0 is_stmt 1
+ 1104               	/* #APP */
+ 1105               	 ;  761 "MiiBoot.c" 1
+ 1106 0028 1124      		clr __zero_reg__
+ 1107               	 ;  0 "" 2
+ 762:MiiBoot.c     **** 	SP=RAMEND;
+ 1108               		.loc 1 762 0
+ 1109               	/* #NOAPP */
+ 1110 002a 8FEF      		ldi r24,lo8(-1)
+ 1111 002c 98E0      		ldi r25,lo8(8)
+ 1112 002e 9EBF      		out __SP_L__+1,r25
+ 1113 0030 8DBF      		out __SP_L__,r24
+ 1114               	.LVL107:
+ 763:MiiBoot.c     **** #endif
+ 764:MiiBoot.c     **** 
+ 765:MiiBoot.c     ****  uint16_t filever = 0;
+ 766:MiiBoot.c     ****  #if defined(UART_DEBUG) || !defined(FLASH_ANY_VERSION)
+ 767:MiiBoot.c     ****  uint16_t flashver = eeprom_read_word((const uint16_t *)E2END - 1);
+ 768:MiiBoot.c     ****  #endif
+ 769:MiiBoot.c     ****  
+ 770:MiiBoot.c     ****  
+ 771:MiiBoot.c     **** #ifdef UART_DEBUG
+ 772:MiiBoot.c     ****     UART_init();
+ 773:MiiBoot.c     **** #endif
+ 774:MiiBoot.c     **** 
+ 775:MiiBoot.c     ****    LED_DDR |= 1<<LED_PIN; 	//LED -> Output
+ 1115               		.loc 1 775 0
+ 1116 0032 569A      		sbi 0xa,6
+ 776:MiiBoot.c     ****    LED_PORT &= ~(1<<LED_PIN);   //LED  -> Low (activate)
+ 1117               		.loc 1 776 0
+ 1118 0034 5E98      		cbi 0xb,6
+ 1119               	.LVL108:
+ 1120               	.LBB35:
+ 1121               	.LBB36:
+ 1122               	.LBB37:
+ 1123               	.LBB38:
+ 392:MiiBoot.c     **** 	SPI_PORT |= 1<<SPI_SS;   //PB2 output: High (deselect other SPI chips)
+ 1124               		.loc 1 392 0
+ 1125 0036 2A9A      		sbi 0x5,2
+ 393:MiiBoot.c     **** 	SPI_DDR  |= 1<<SPI_CLK | 1<<SPI_MOSI | 1<<SPI_SS; // SPI Data -> Output
+ 1126               		.loc 1 393 0
+ 1127 0038 84B1      		in r24,0x4
+ 1128 003a 8C62      		ori r24,lo8(44)
+ 1129 003c 84B9      		out 0x4,r24
+ 394:MiiBoot.c     ****         SPCR = 1<<SPE | 1<<MSTR | SPI_INIT_CLOCK; //SPI Enable, SPI Master Mode
+ 1130               		.loc 1 394 0
+ 1131 003e 83E5      		ldi r24,lo8(83)
+ 1132 0040 8CBD      		out 0x2c,r24
+ 1133               	.LVL109:
+ 1134 0042 CAE0      		ldi r28,lo8(10)
+ 1135               	.LVL110:
+ 1136               	.L83:
+ 404:MiiBoot.c     **** 		spi_send_byte(0xFF);	
+ 1137               		.loc 1 404 0
+ 1138 0044 8FEF      		ldi r24,lo8(-1)
+ 1139 0046 0E94 0000 		call spi_send_byte
+ 1140               	.LVL111:
+ 1141 004a C150      		subi r28,lo8(-(-1))
+ 1142               	.LVL112:
+ 403:MiiBoot.c     **** 	while(i) { //Pulse 80+ clocks to reset MMC
+ 1143               		.loc 1 403 0
+ 1144 004c 01F4      		brne .L83
+ 410:MiiBoot.c     **** 	cmd[0] = 0x40 + MMC_GO_IDLE_STATE;
+ 1145               		.loc 1 410 0
+ 1146 004e 80E4      		ldi r24,lo8(64)
+ 1147 0050 8093 0000 		sts cmd,r24
+ 411:MiiBoot.c     **** 	cmd[1] = 0x00; cmd[2] = 0x00; cmd[3] = 0x00; cmd[4] = 0x00; cmd[5] = 0x95;
+ 1148               		.loc 1 411 0
+ 1149 0054 1092 0000 		sts cmd+1,__zero_reg__
+ 1150 0058 1092 0000 		sts cmd+2,__zero_reg__
+ 1151 005c 1092 0000 		sts cmd+3,__zero_reg__
+ 1152 0060 1092 0000 		sts cmd+4,__zero_reg__
+ 1153 0064 85E9      		ldi r24,lo8(-107)
+ 1154 0066 8093 0000 		sts cmd+5,r24
+ 1155               	.LVL113:
+ 1156 006a C0E1      		ldi r28,lo8(16)
+ 1157               	.LVL114:
+ 1158               	.L86:
+ 415:MiiBoot.c     **** 		res=send_cmd(); //store result of reset command, should be 0x01
+ 1159               		.loc 1 415 0
+ 1160 006c 0E94 0000 		call send_cmd
+ 1161               	.LVL115:
+ 1162 0070 D82F      		mov r29,r24
+ 1163               	.LVL116:
+ 417:MiiBoot.c     **** 		MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate mmc);
+ 1164               		.loc 1 417 0
+ 1165 0072 2A9A      		sbi 0x5,2
+ 418:MiiBoot.c     ****       	 	spi_send_byte(0xFF);
+ 1166               		.loc 1 418 0
+ 1167 0074 8FEF      		ldi r24,lo8(-1)
+ 1168               	.LVL117:
+ 1169 0076 0E94 0000 		call spi_send_byte
+ 1170               	.LVL118:
+ 419:MiiBoot.c     **** 		if (res == 0x01)
+ 1171               		.loc 1 419 0
+ 1172 007a D130      		cpi r29,lo8(1)
+ 1173 007c 01F4      		brne .+2
+ 1174 007e 00C0      		rjmp .L84
+ 1175               	.LVL119:
+ 1176 0080 C150      		subi r28,lo8(-(-1))
+ 1177               	.LVL120:
+ 413:MiiBoot.c     **** 	for (i=0; i<MMC_CMD0_RETRY; i++)
+ 1178               		.loc 1 413 0
+ 1179 0082 01F4      		brne .L86
+ 1180 0084 00C0      		rjmp .L104
+ 1181               	.LVL121:
+ 1182               	.L87:
+ 434:MiiBoot.c     **** 		MMC_PORT |= 1<<MMC_CS; //MMC Chip Select -> High (deactivate);
+ 1183               		.loc 1 434 0
+ 1184 0086 2A9A      		sbi 0x5,2
+ 435:MiiBoot.c     **** 		spi_send_byte(0xFF);
+ 1185               		.loc 1 435 0
+ 1186 0088 8FEF      		ldi r24,lo8(-1)
+ 1187 008a 0E94 0000 		call spi_send_byte
+ 1188               	.LVL122:
+ 1189               	.L110:
+ 433:MiiBoot.c     **** 	while(send_cmd() != 0) {
+ 1190               		.loc 1 433 0
+ 1191 008e 0E94 0000 		call send_cmd
+ 1192               	.LVL123:
+ 1193 0092 8111      		cpse r24,__zero_reg__
+ 1194 0094 00C0      		rjmp .L87
+ 1195 0096 00C0      		rjmp .L137
+ 1196               	.L111:
+ 1197               	.LBE38:
+ 1198               	.LBE37:
+ 527:MiiBoot.c     **** 	if ((vbr->bsFileSysType[0] == 'F') && (vbr->bsFileSysType[4] == '6'))
+ 1199               		.loc 1 527 0
+ 1200 0098 8091 0000 		lds r24,buff+58
+ 1201 009c 8633      		cpi r24,lo8(54)
+ 1202 009e 01F4      		brne .L89
+ 529:MiiBoot.c     **** 		FATRegionStartSec = 0;
+ 1203               		.loc 1 529 0
+ 1204 00a0 1092 0000 		sts FATRegionStartSec+1,__zero_reg__
+ 1205 00a4 1092 0000 		sts FATRegionStartSec,__zero_reg__
+ 1206 00a8 00C0      		rjmp .L90
+ 1207               	.L89:
+ 533:MiiBoot.c     **** 		FATRegionStartSec = mbr->sector.partition[0].sectorOffset;
+ 1208               		.loc 1 533 0
+ 1209 00aa 6091 0000 		lds r22,buff+454
+ 1210 00ae 7091 0000 		lds r23,buff+454+1
+ 1211 00b2 8091 0000 		lds r24,buff+454+2
+ 1212 00b6 9091 0000 		lds r25,buff+454+3
+ 1213 00ba 7093 0000 		sts FATRegionStartSec+1,r23
+ 1214 00be 6093 0000 		sts FATRegionStartSec,r22
+ 535:MiiBoot.c     **** 		mmc_start_read_block(mbr->sector.partition[0].sectorOffset);
+ 1215               		.loc 1 535 0
+ 1216 00c2 0E94 0000 		call mmc_start_read_block
+ 1217               	.LVL124:
+ 537:MiiBoot.c     ****         if ((vbr->bsFileSysType[0] != 'F') || (vbr->bsFileSysType[4] != '6'))
+ 1218               		.loc 1 537 0
+ 1219 00c6 8091 0000 		lds r24,buff+54
+ 1220 00ca 8634      		cpi r24,lo8(70)
+ 1221 00cc 01F0      		breq .+2
+ 1222 00ce 00C0      		rjmp .L104
+ 1223 00d0 8091 0000 		lds r24,buff+58
+ 1224 00d4 8633      		cpi r24,lo8(54)
+ 1225 00d6 01F0      		breq .+2
+ 1226 00d8 00C0      		rjmp .L104
+ 1227               	.L90:
+ 541:MiiBoot.c     **** 	SectorsPerCluster  			= vbr->bsSecPerClus; // 4
+ 1228               		.loc 1 541 0
+ 1229 00da 8091 0000 		lds r24,buff+13
+ 1230 00de 8093 0000 		sts SectorsPerCluster,r24
+ 544:MiiBoot.c     **** 	FATRegionStartSec			+= vbr->bsRsvdSecCnt;						// 6
+ 1231               		.loc 1 544 0
+ 1232 00e2 8091 0000 		lds r24,buff+14
+ 1233 00e6 9091 0000 		lds r25,buff+14+1
+ 1234 00ea 2091 0000 		lds r18,FATRegionStartSec
+ 1235 00ee 3091 0000 		lds r19,FATRegionStartSec+1
+ 1236 00f2 820F      		add r24,r18
+ 1237 00f4 931F      		adc r25,r19
+ 1238 00f6 9093 0000 		sts FATRegionStartSec+1,r25
+ 1239 00fa 8093 0000 		sts FATRegionStartSec,r24
+ 545:MiiBoot.c     **** 	RootDirRegionStartSec	 	= FATRegionStartSec + (vbr->bsNumFATs * vbr->bsNrSeProFAT16);		// 496	
+ 1240               		.loc 1 545 0
+ 1241 00fe 4091 0000 		lds r20,buff+16
+ 1242 0102 2091 0000 		lds r18,buff+22
+ 1243 0106 3091 0000 		lds r19,buff+22+1
+ 1244 010a 429F      		mul r20,r18
+ 1245 010c 8001      		movw r16,r0
+ 1246 010e 439F      		mul r20,r19
+ 1247 0110 100D      		add r17,r0
+ 1248 0112 1124      		clr __zero_reg__
+ 1249 0114 080F      		add r16,r24
+ 1250 0116 191F      		adc r17,r25
+ 1251 0118 1093 0000 		sts RootDirRegionStartSec+1,r17
+ 1252 011c 0093 0000 		sts RootDirRegionStartSec,r16
+ 546:MiiBoot.c     **** 	RootDirRegionSize		 	= (vbr->bsRootEntCnt / 16); 						// 32
+ 1253               		.loc 1 546 0
+ 1254 0120 E090 0000 		lds r14,buff+17
+ 1255 0124 F090 0000 		lds r15,buff+17+1
+ 1256 0128 B4E0      		ldi r27,4
+ 1257               		1:
+ 1258 012a F694      		lsr r15
+ 1259 012c E794      		ror r14
+ 1260 012e BA95      		dec r27
+ 1261 0130 01F4      		brne 1b
+ 1262 0132 F092 0000 		sts RootDirRegionSize+1,r15
+ 1263 0136 E092 0000 		sts RootDirRegionSize,r14
+ 547:MiiBoot.c     **** 	DataRegionStartSec 			= RootDirRegionStartSec + RootDirRegionSize;	// 528
+ 1264               		.loc 1 547 0
+ 1265 013a C801      		movw r24,r16
+ 1266 013c 8E0D      		add r24,r14
+ 1267 013e 9F1D      		adc r25,r15
+ 1268 0140 A0E0      		ldi r26,0
+ 1269 0142 B0E0      		ldi r27,0
+ 1270 0144 8093 0000 		sts DataRegionStartSec,r24
+ 1271 0148 9093 0000 		sts DataRegionStartSec+1,r25
+ 1272 014c A093 0000 		sts DataRegionStartSec+2,r26
+ 1273 0150 B093 0000 		sts DataRegionStartSec+3,r27
+ 1274               	.LVL125:
+ 1275 0154 C0E0      		ldi r28,0
+ 1276 0156 D0E0      		ldi r29,0
+ 1277               	.LVL126:
+ 1278               	.LBE36:
+ 1279               	.LBE35:
+ 1280               	.LBB42:
+ 1281               	.LBB43:
+ 1282               	.LBB44:
+ 1283               	.LBB45:
+ 587:MiiBoot.c     **** 	file.next = buff + 512;
+ 1284               		.loc 1 587 0
+ 1285 0158 80E0      		ldi r24,lo8(buff+512)
+ 1286 015a C82E      		mov r12,r24
+ 1287 015c 80E0      		ldi r24,hi8(buff+512)
+ 1288 015e D82E      		mov r13,r24
+ 1289               	.LVL127:
+ 1290               	.L113:
+ 564:MiiBoot.c     **** 	if ((entry_num / 16) >= RootDirRegionSize)
+ 1291               		.loc 1 564 0
+ 1292 0160 CE01      		movw r24,r28
+ 1293 0162 A4E0      		ldi r26,4
+ 1294               		1:
+ 1295 0164 9695      		lsr r25
+ 1296 0166 8795      		ror r24
+ 1297 0168 AA95      		dec r26
+ 1298 016a 01F4      		brne 1b
+ 1299 016c 8E15      		cp r24,r14
+ 1300 016e 9F05      		cpc r25,r15
+ 1301 0170 00F0      		brlo .+2
+ 1302 0172 00C0      		rjmp .L91
+ 1303               	.LVL128:
+ 568:MiiBoot.c     **** 	uint32_t dirsector = RootDirRegionStartSec + entry_num / 16;
+ 1304               		.loc 1 568 0
+ 1305 0174 BC01      		movw r22,r24
+ 1306 0176 600F      		add r22,r16
+ 1307 0178 711F      		adc r23,r17
+ 1308 017a 80E0      		ldi r24,0
+ 1309 017c 90E0      		ldi r25,0
+ 1310               	.LVL129:
+ 575:MiiBoot.c     **** 	mmc_start_read_block(dirsector);
+ 1311               		.loc 1 575 0
+ 1312 017e 0E94 0000 		call mmc_start_read_block
+ 1313               	.LVL130:
+ 578:MiiBoot.c     **** 	dir = (direntry_t *) buff + direntry_in_sector;
+ 1314               		.loc 1 578 0
+ 1315 0182 EC2F      		mov r30,r28
+ 1316 0184 EF70      		andi r30,lo8(15)
+ 1317 0186 80E2      		ldi r24,lo8(32)
+ 1318 0188 E89F      		mul r30,r24
+ 1319 018a F001      		movw r30,r0
+ 1320 018c 1124      		clr __zero_reg__
+ 1321 018e E050      		subi r30,lo8(-(buff))
+ 1322 0190 F040      		sbci r31,hi8(-(buff))
+ 1323               	.LVL131:
+ 580:MiiBoot.c     **** 	if ((dir->name[0] == 0) || (dir->name[0] == 0xE5) || (dir->fstclust == 0))
+ 1324               		.loc 1 580 0
+ 1325 0192 8081      		ld r24,Z
+ 1326 0194 8823      		tst r24
+ 1327 0196 01F4      		brne .+2
+ 1328 0198 00C0      		rjmp .L91
+ 1329 019a 853E      		cpi r24,lo8(-27)
+ 1330 019c 01F4      		brne .+2
+ 1331 019e 00C0      		rjmp .L91
+ 1332 01a0 828D      		ldd r24,Z+26
+ 1333 01a2 938D      		ldd r25,Z+27
+ 1334 01a4 0097      		sbiw r24,0
+ 1335 01a6 01F4      		brne .+2
+ 1336 01a8 00C0      		rjmp .L91
+ 584:MiiBoot.c     **** 	file.startcluster = dir->fstclust;
+ 1337               		.loc 1 584 0
+ 1338 01aa 9093 0000 		sts file+1,r25
+ 1339 01ae 8093 0000 		sts file,r24
+ 585:MiiBoot.c     **** 	file.size = dir->filesize;
+ 1340               		.loc 1 585 0
+ 1341 01b2 848D      		ldd r24,Z+28
+ 1342 01b4 958D      		ldd r25,Z+29
+ 1343 01b6 A68D      		ldd r26,Z+30
+ 1344 01b8 B78D      		ldd r27,Z+31
+ 1345 01ba 8093 0000 		sts file+4,r24
+ 1346 01be 9093 0000 		sts file+4+1,r25
+ 1347 01c2 A093 0000 		sts file+4+2,r26
+ 1348 01c6 B093 0000 		sts file+4+3,r27
+ 586:MiiBoot.c     **** 	file.sector_counter = 0;
+ 1349               		.loc 1 586 0
+ 1350 01ca 1092 0000 		sts file+2+1,__zero_reg__
+ 1351 01ce 1092 0000 		sts file+2,__zero_reg__
+ 587:MiiBoot.c     **** 	file.next = buff + 512;
+ 1352               		.loc 1 587 0
+ 1353 01d2 D092 0000 		sts file+8+1,r13
+ 1354 01d6 C092 0000 		sts file+8,r12
+ 1355               	.LVL132:
+ 592:MiiBoot.c     **** 	uint8_t match = 1;
+ 1356               		.loc 1 592 0
+ 1357 01da 31E0      		ldi r19,lo8(1)
+ 593:MiiBoot.c     **** 	for (i = 0; nameMatch[i]; i++) { 
+ 1358               		.loc 1 593 0
+ 1359 01dc 20E0      		ldi r18,0
+ 1360 01de 00C0      		rjmp .L92
+ 1361               	.LVL133:
+ 1362               	.L94:
+ 594:MiiBoot.c     **** 	  match &= (nameMatch[i] == dir->name[i]);
+ 1363               		.loc 1 594 0
+ 1364 01e0 DA01      		movw r26,r20
+ 1365 01e2 AE0F      		add r26,r30
+ 1366 01e4 BF1F      		adc r27,r31
+ 1367 01e6 91E0      		ldi r25,lo8(1)
+ 1368 01e8 4C91      		ld r20,X
+ 1369 01ea 8413      		cpse r24,r20
+ 1370 01ec 90E0      		ldi r25,0
+ 1371               	.L93:
+ 1372 01ee 3923      		and r19,r25
+ 1373               	.LVL134:
+ 593:MiiBoot.c     **** 	for (i = 0; nameMatch[i]; i++) { 
+ 1374               		.loc 1 593 0
+ 1375 01f0 2F5F      		subi r18,lo8(-(1))
+ 1376               	.LVL135:
+ 1377               	.L92:
+ 1378 01f2 422F      		mov r20,r18
+ 1379 01f4 50E0      		ldi r21,0
+ 1380 01f6 CA01      		movw r24,r20
+ 1381 01f8 8050      		subi r24,lo8(-(nameMatch))
+ 1382 01fa 9040      		sbci r25,hi8(-(nameMatch))
+ 1383 01fc DC01      		movw r26,r24
+ 1384 01fe 8C91      		ld r24,X
+ 1385 0200 8111      		cpse r24,__zero_reg__
+ 1386 0202 00C0      		rjmp .L94
+ 596:MiiBoot.c     **** 	if (!(match && i)) return 0;
+ 1387               		.loc 1 596 0
+ 1388 0204 3323      		tst r19
+ 1389 0206 01F4      		brne .+2
+ 1390 0208 00C0      		rjmp .L91
+ 1391 020a 2223      		tst r18
+ 1392 020c 01F4      		brne .+2
+ 1393 020e 00C0      		rjmp .L91
+ 598:MiiBoot.c     ****         *filever = ((dir->name[i]-'0') << 8) | ((dir->name[i+1]-'0') << 4) | (dir->name[i+2]-'0');
+ 1394               		.loc 1 598 0
+ 1395 0210 DA01      		movw r26,r20
+ 1396 0212 AE0F      		add r26,r30
+ 1397 0214 BF1F      		adc r27,r31
+ 1398 0216 9C90      		ld r9,X
+ 1399 0218 1196      		adiw r26,1
+ 1400 021a AC90      		ld r10,X
+ 1401 021c 1197      		sbiw r26,1
+ 1402 021e 1296      		adiw r26,2
+ 1403 0220 BC90      		ld r11,X
+ 1404               	.LVL136:
+ 601:MiiBoot.c     **** 	if (dir->name[9] != 'E') return 0;
+ 1405               		.loc 1 601 0
+ 1406 0222 8185      		ldd r24,Z+9
+ 1407 0224 8534      		cpi r24,lo8(69)
+ 1408 0226 01F0      		breq .+2
+ 1409 0228 00C0      		rjmp .L91
+ 602:MiiBoot.c     **** 	if (dir->name[8] == 'H' && dir->name[10] == 'X') return 1;
+ 1410               		.loc 1 602 0
+ 1411 022a 8085      		ldd r24,Z+8
+ 1412 022c 8834      		cpi r24,lo8(72)
+ 1413 022e 01F4      		brne .L95
+ 1414 0230 8285      		ldd r24,Z+10
+ 1415 0232 8835      		cpi r24,lo8(88)
+ 1416 0234 01F0      		breq .+2
+ 1417 0236 00C0      		rjmp .L91
+ 1418 0238 00C0      		rjmp .L96
+ 1419               	.L95:
+ 603:MiiBoot.c     **** 	if (dir->name[8] == 'E' && dir->name[10] == 'P') return 2;
+ 1420               		.loc 1 603 0
+ 1421 023a 8534      		cpi r24,lo8(69)
+ 1422 023c 01F0      		breq .+2
+ 1423 023e 00C0      		rjmp .L91
+ 1424 0240 8285      		ldd r24,Z+10
+ 1425 0242 8035      		cpi r24,lo8(80)
+ 1426 0244 01F0      		breq .+2
+ 1427 0246 00C0      		rjmp .L91
+ 1428 0248 00C0      		rjmp .L97
+ 1429               	.LVL137:
+ 1430               	.L102:
+ 1431               	.LBE45:
+ 1432               	.LBE44:
+ 1433               	.LBB47:
+ 1434               	.LBB48:
+ 690:MiiBoot.c     **** 		if (num_flash_words)
+ 1435               		.loc 1 690 0
+ 1436 024a FF20      		tst r15
+ 1437 024c 01F0      		breq .L98
+ 693:MiiBoot.c     **** 			*out++ = file_read_hex();
+ 1438               		.loc 1 693 0
+ 1439 024e 8E01      		movw r16,r28
+ 1440 0250 0F5F      		subi r16,-1
+ 1441 0252 1F4F      		sbci r17,-1
+ 1442               	.LVL138:
+ 1443 0254 0E94 0000 		call file_read_hex
+ 1444               	.LVL139:
+ 1445 0258 8883      		st Y,r24
+ 694:MiiBoot.c     **** 			num_flash_words--;
+ 1446               		.loc 1 694 0
+ 1447 025a FA94      		dec r15
+ 1448               	.LVL140:
+ 697:MiiBoot.c     **** 			if (out - pagebuffer == SPM_PAGESIZE) {
+ 1449               		.loc 1 697 0
+ 1450 025c B0E0      		ldi r27,hi8(pagebuffer+128)
+ 1451 025e 0030      		cpi r16,lo8(pagebuffer+128)
+ 1452 0260 1B07      		cpc r17,r27
+ 1453 0262 01F4      		brne .L115
+ 700:MiiBoot.c     **** 			    write_flash_page();
+ 1454               		.loc 1 700 0
+ 1455 0264 0E94 0000 		call write_flash_page
+ 1456               	.LVL141:
+ 702:MiiBoot.c     **** 			    address += SPM_PAGESIZE;
+ 1457               		.loc 1 702 0
+ 1458 0268 2091 0000 		lds r18,address
+ 1459 026c 3091 0000 		lds r19,address+1
+ 1460 0270 2058      		subi r18,-128
+ 1461 0272 3F4F      		sbci r19,-1
+ 1462 0274 3093 0000 		sts address+1,r19
+ 1463 0278 2093 0000 		sts address,r18
+ 1464               	.LVL142:
+ 703:MiiBoot.c     **** 				out = pagebuffer;
+ 1465               		.loc 1 703 0
+ 1466 027c C0E0      		ldi r28,lo8(pagebuffer)
+ 1467 027e D0E0      		ldi r29,hi8(pagebuffer)
+ 1468 0280 00C0      		rjmp .L114
+ 1469               	.LVL143:
+ 1470               	.L98:
+ 709:MiiBoot.c     **** 			if (file_read_byte() == ':') {
+ 1471               		.loc 1 709 0
+ 1472 0282 0E94 0000 		call file_read_byte
+ 1473               	.LVL144:
+ 1474 0286 8A33      		cpi r24,lo8(58)
+ 1475 0288 01F4      		brne .L114
+ 710:MiiBoot.c     **** 				num_flash_words = file_read_hex();
+ 1476               		.loc 1 710 0
+ 1477 028a 0E94 0000 		call file_read_hex
+ 1478               	.LVL145:
+ 1479 028e F82E      		mov r15,r24
+ 1480               	.LVL146:
+ 711:MiiBoot.c     **** 				file.next+=4; /* skip 4 bytes, address */
+ 1481               		.loc 1 711 0
+ 1482 0290 2091 0000 		lds r18,file+8
+ 1483 0294 3091 0000 		lds r19,file+8+1
+ 1484 0298 2C5F      		subi r18,-4
+ 1485 029a 3F4F      		sbci r19,-1
+ 1486 029c 3093 0000 		sts file+8+1,r19
+ 1487 02a0 2093 0000 		sts file+8,r18
+ 712:MiiBoot.c     **** 				if (file_read_hex()==1) break; //01 is EOF
+ 1488               		.loc 1 712 0
+ 1489 02a4 0E94 0000 		call file_read_hex
+ 1490               	.LVL147:
+ 1491 02a8 8130      		cpi r24,lo8(1)
+ 1492 02aa 01F4      		brne .L114
+ 1493               	.L103:
+ 717:MiiBoot.c     **** 	if (out != pagebuffer) write_flash_page();
+ 1494               		.loc 1 717 0
+ 1495 02ac C050      		subi r28,lo8(pagebuffer)
+ 1496 02ae D040      		sbci r29,hi8(pagebuffer)
+ 1497 02b0 01F4      		brne .L100
+ 1498 02b2 00C0      		rjmp .L101
+ 1499               	.LVL148:
+ 1500               	.L115:
+ 693:MiiBoot.c     **** 			*out++ = file_read_hex();
+ 1501               		.loc 1 693 0
+ 1502 02b4 E801      		movw r28,r16
+ 1503               	.LVL149:
+ 1504               	.L114:
+ 688:MiiBoot.c     **** 	while (file.size)
+ 1505               		.loc 1 688 0
+ 1506 02b6 4091 0000 		lds r20,file+4
+ 1507 02ba 5091 0000 		lds r21,file+4+1
+ 1508 02be 6091 0000 		lds r22,file+4+2
+ 1509 02c2 7091 0000 		lds r23,file+4+3
+ 1510 02c6 452B      		or r20,r21
+ 1511 02c8 462B      		or r20,r22
+ 1512 02ca 472B      		or r20,r23
+ 1513 02cc 01F0      		breq .+2
+ 1514 02ce 00C0      		rjmp .L102
+ 1515 02d0 00C0      		rjmp .L103
+ 1516               	.L100:
+ 717:MiiBoot.c     **** 	if (out != pagebuffer) write_flash_page();
+ 1517               		.loc 1 717 0
+ 1518 02d2 0E94 0000 		call write_flash_page
+ 1519               	.LVL150:
+ 1520               	.L101:
+ 1521               	.LBE48:
+ 1522               	.LBE47:
+ 1523               	.LBB50:
+ 1524               	.LBB46:
+ 598:MiiBoot.c     ****         *filever = ((dir->name[i]-'0') << 8) | ((dir->name[i+1]-'0') << 4) | (dir->name[i+2]-'0');
+ 1525               		.loc 1 598 0
+ 1526 02d6 692D      		mov r22,r9
+ 1527 02d8 70E0      		ldi r23,0
+ 1528 02da 6053      		subi r22,48
+ 1529 02dc 7109      		sbc r23,__zero_reg__
+ 1530 02de 762F      		mov r23,r22
+ 1531 02e0 6627      		clr r22
+ 1532 02e2 8A2D      		mov r24,r10
+ 1533 02e4 90E0      		ldi r25,0
+ 1534 02e6 C097      		sbiw r24,48
+ 1535 02e8 F4E0      		ldi r31,4
+ 1536               		1:
+ 1537 02ea 880F      		lsl r24
+ 1538 02ec 991F      		rol r25
+ 1539 02ee FA95      		dec r31
+ 1540 02f0 01F4      		brne 1b
+ 1541 02f2 682B      		or r22,r24
+ 1542 02f4 792B      		or r23,r25
+ 1543 02f6 8B2D      		mov r24,r11
+ 1544 02f8 90E0      		ldi r25,0
+ 1545 02fa C097      		sbiw r24,48
+ 1546 02fc 682B      		or r22,r24
+ 1547 02fe 792B      		or r23,r25
+ 1548               	.LBE46:
+ 1549               	.LBE50:
+ 777:MiiBoot.c     **** 
+ 778:MiiBoot.c     **** 
+ 779:MiiBoot.c     ****    /* we have found a board name! 		   */
+ 780:MiiBoot.c     ****    /* now go on and see if we find a      */
+ 781:MiiBoot.c     ****    /* file on mmc with the same name...   */
+ 782:MiiBoot.c     **** 		
+ 783:MiiBoot.c     ****    /* first, init mmc / fat */
+ 784:MiiBoot.c     ****    if (fat16_init() == MMC_OK) {	
+ 785:MiiBoot.c     **** 
+ 786:MiiBoot.c     ****      #ifdef UART_DEBUG
+ 787:MiiBoot.c     ****        UART_putsP(PSTR("SD="),1);
+ 788:MiiBoot.c     ****     #endif
+ 789:MiiBoot.c     ****      /* for each file in ROOT... */
+ 790:MiiBoot.c     ****      for (uint16_t entrycounter=0; entrycounter<512; entrycounter++){
+ 791:MiiBoot.c     ****     	/* skip all unimportant files */
+ 792:MiiBoot.c     ****         uint8_t fileType=fat16_readRootDirEntry(entrycounter,&filever);
+ 793:MiiBoot.c     ****     	if (fileType== 1
+ 794:MiiBoot.c     ****           #ifndef FLASH_ANY_VERSION
+ 795:MiiBoot.c     ****            && (flashver==0xFFFF || flashver<filever)
+ 796:MiiBoot.c     ****           #endif 
+ 797:MiiBoot.c     ****         ) {
+ 798:MiiBoot.c     ****             #ifdef UART_DEBUG
+ 799:MiiBoot.c     ****               UART_putsP(PSTR("start="),flashver);
+ 800:MiiBoot.c     ****             #endif
+ 801:MiiBoot.c     **** 
+ 802:MiiBoot.c     ****            //We are in progress write flash, busy bit
+ 803:MiiBoot.c     ****            eeprom_update_word((uint16_t *)E2END - 1, 0xFFFF);
+ 804:MiiBoot.c     ****            //Read the hex file
+ 805:MiiBoot.c     ****            read_hex_file();
+ 806:MiiBoot.c     ****             //We are ready write flash, file version
+ 807:MiiBoot.c     ****            eeprom_update_word((uint16_t *)E2END - 1, filever);
+ 1550               		.loc 1 807 0
+ 1551 0300 8DEF      		ldi r24,lo8(-3)
+ 1552 0302 93E0      		ldi r25,lo8(3)
+ 1553 0304 0E94 0000 		call __eeupd_word_m328p
+ 1554               	.LVL151:
+ 808:MiiBoot.c     ****            #ifdef UART_DEBUG
+ 809:MiiBoot.c     ****              UART_putsP(PSTR("finish="),filever);
+ 810:MiiBoot.c     ****            #endif
+ 811:MiiBoot.c     ****            break;
+ 1555               		.loc 1 811 0
+ 1556 0308 00C0      		rjmp .L104
+ 1557               	.LVL152:
+ 1558               	.L107:
+ 1559               	.LBB51:
+ 1560               	.LBB52:
+ 726:MiiBoot.c     **** 	if (num_flash_words) {
+ 1561               		.loc 1 726 0
+ 1562 030a CC23      		tst r28
+ 1563 030c 01F0      		breq .L105
+ 727:MiiBoot.c     ****              eeprom_update_byte((uint8_t *)address++, file_read_hex());
+ 1564               		.loc 1 727 0
+ 1565 030e 0E94 0000 		call file_read_hex
+ 1566               	.LVL153:
+ 1567 0312 2091 0000 		lds r18,address
+ 1568 0316 3091 0000 		lds r19,address+1
+ 1569 031a A901      		movw r20,r18
+ 1570 031c 4F5F      		subi r20,-1
+ 1571 031e 5F4F      		sbci r21,-1
+ 1572 0320 5093 0000 		sts address+1,r21
+ 1573 0324 4093 0000 		sts address,r20
+ 1574 0328 682F      		mov r22,r24
+ 1575 032a C901      		movw r24,r18
+ 1576 032c 0E94 0000 		call __eeupd_byte_m328p
+ 1577               	.LVL154:
+ 728:MiiBoot.c     **** 	     num_flash_words--;
+ 1578               		.loc 1 728 0
+ 1579 0330 C150      		subi r28,lo8(-(-1))
+ 1580               	.LVL155:
+ 1581 0332 00C0      		rjmp .L112
+ 1582               	.L105:
+ 731:MiiBoot.c     **** 	  if (file_read_byte() == ':') {
+ 1583               		.loc 1 731 0
+ 1584 0334 0E94 0000 		call file_read_byte
+ 1585               	.LVL156:
+ 1586 0338 8A33      		cpi r24,lo8(58)
+ 1587 033a 01F4      		brne .L112
+ 732:MiiBoot.c     ****             num_flash_words = file_read_hex();
+ 1588               		.loc 1 732 0
+ 1589 033c 0E94 0000 		call file_read_hex
+ 1590               	.LVL157:
+ 1591 0340 C82F      		mov r28,r24
+ 1592               	.LVL158:
+ 733:MiiBoot.c     **** 	    address=file_read_hex()<<8 | file_read_hex(); /* Read new address */
+ 1593               		.loc 1 733 0
+ 1594 0342 0E94 0000 		call file_read_hex
+ 1595               	.LVL159:
+ 1596 0346 D82F      		mov r29,r24
+ 1597 0348 0E94 0000 		call file_read_hex
+ 1598               	.LVL160:
+ 1599 034c 2D2F      		mov r18,r29
+ 1600 034e 30E0      		ldi r19,0
+ 1601 0350 322F      		mov r19,r18
+ 1602 0352 2227      		clr r18
+ 1603 0354 282B      		or r18,r24
+ 1604 0356 3093 0000 		sts address+1,r19
+ 1605 035a 2093 0000 		sts address,r18
+ 734:MiiBoot.c     ****             if (file_read_hex()==1) break;
+ 1606               		.loc 1 734 0
+ 1607 035e 0E94 0000 		call file_read_hex
+ 1608               	.LVL161:
+ 1609 0362 8130      		cpi r24,lo8(1)
+ 1610 0364 01F0      		breq .L104
+ 1611               	.LVL162:
+ 1612               	.L112:
+ 725:MiiBoot.c     ****     while (file.size) {
+ 1613               		.loc 1 725 0
+ 1614 0366 4091 0000 		lds r20,file+4
+ 1615 036a 5091 0000 		lds r21,file+4+1
+ 1616 036e 6091 0000 		lds r22,file+4+2
+ 1617 0372 7091 0000 		lds r23,file+4+3
+ 1618 0376 452B      		or r20,r21
+ 1619 0378 462B      		or r20,r22
+ 1620 037a 472B      		or r20,r23
+ 1621 037c 01F4      		brne .L107
+ 1622               	.LVL163:
+ 1623               	.L104:
+ 1624               	.LBE52:
+ 1625               	.LBE51:
+ 1626               	.LBE43:
+ 1627               	.LBE42:
+ 812:MiiBoot.c     ****            
+ 813:MiiBoot.c     ****         }
+ 814:MiiBoot.c     ****         if (fileType == 2     //EEP
+ 815:MiiBoot.c     ****            #ifndef FLASH_ANY_VERSION
+ 816:MiiBoot.c     ****            && (flashver==0xFFFF || flashver==filever)
+ 817:MiiBoot.c     ****           #endif 
+ 818:MiiBoot.c     ****          ){ 
+ 819:MiiBoot.c     ****            //Read the eep hex file
+ 820:MiiBoot.c     ****            read_eep_file();
+ 821:MiiBoot.c     ****            break;
+ 822:MiiBoot.c     ****          }
+ 823:MiiBoot.c     ****         
+ 824:MiiBoot.c     ****      }	              
+ 825:MiiBoot.c     ****      
+ 826:MiiBoot.c     ****   } else {
+ 827:MiiBoot.c     ****     #ifdef UART_DEBUG
+ 828:MiiBoot.c     ****        UART_putsP(PSTR("SD="),0);
+ 829:MiiBoot.c     ****     #endif
+ 830:MiiBoot.c     ****   }
+ 831:MiiBoot.c     **** 
+ 832:MiiBoot.c     ****   #ifdef UART_DEBUG
+ 833:MiiBoot.c     ****      UART_putsP(PSTR("REBOOT="),filever);
+ 834:MiiBoot.c     ****   #endif
+ 835:MiiBoot.c     **** 
+ 836:MiiBoot.c     **** #ifdef BOOT_LOADER
+ 837:MiiBoot.c     **** 	/* we reset via watchdog in order to reset all the registers to their default values */
+ 838:MiiBoot.c     **** 	WDTCSR = _BV(WDE);
+ 1628               		.loc 1 838 0
+ 1629 037e 88E0      		ldi r24,lo8(8)
+ 1630 0380 8093 6000 		sts 96,r24
+ 1631               	.L109:
+ 1632 0384 00C0      		rjmp .L109
+ 1633               	.LVL164:
+ 1634               	.L84:
+ 1635               	.LBB58:
+ 1636               	.LBB41:
+ 1637               	.LBB40:
+ 1638               	.LBB39:
+ 428:MiiBoot.c     **** 	cmd[0]=0x40 + MMC_SEND_OP_COND;
+ 1639               		.loc 1 428 0
+ 1640 0386 81E4      		ldi r24,lo8(65)
+ 1641 0388 8093 0000 		sts cmd,r24
+ 1642 038c 00C0      		rjmp .L110
+ 1643               	.L137:
+ 1644               	.LBE39:
+ 1645               	.LBE40:
+ 524:MiiBoot.c     ****     mmc_start_read_block(0);
+ 1646               		.loc 1 524 0
+ 1647 038e 60E0      		ldi r22,0
+ 1648 0390 70E0      		ldi r23,0
+ 1649 0392 CB01      		movw r24,r22
+ 1650 0394 0E94 0000 		call mmc_start_read_block
+ 1651               	.LVL165:
+ 527:MiiBoot.c     **** 	if ((vbr->bsFileSysType[0] == 'F') && (vbr->bsFileSysType[4] == '6'))
+ 1652               		.loc 1 527 0
+ 1653 0398 8091 0000 		lds r24,buff+54
+ 1654 039c 8634      		cpi r24,lo8(70)
+ 1655 039e 01F0      		breq .+2
+ 1656 03a0 00C0      		rjmp .L89
+ 1657 03a2 00C0      		rjmp .L111
+ 1658               	.LVL166:
+ 1659               	.L97:
+ 1660               	.LBE41:
+ 1661               	.LBE58:
+ 1662               	.LBB59:
+ 1663               	.LBB56:
+ 1664               	.LBB54:
+ 1665               	.LBB53:
+ 724:MiiBoot.c     ****     address = 0;
+ 1666               		.loc 1 724 0
+ 1667 03a4 1092 0000 		sts address+1,__zero_reg__
+ 1668 03a8 1092 0000 		sts address,__zero_reg__
+ 723:MiiBoot.c     ****     uint8_t num_flash_words = 0;
+ 1669               		.loc 1 723 0
+ 1670 03ac C0E0      		ldi r28,0
+ 1671               	.LVL167:
+ 1672 03ae 00C0      		rjmp .L112
+ 1673               	.LVL168:
+ 1674               	.L91:
+ 1675               	.LBE53:
+ 1676               	.LBE54:
+ 1677               	.LBE56:
+ 790:MiiBoot.c     ****      for (uint16_t entrycounter=0; entrycounter<512; entrycounter++){
+ 1678               		.loc 1 790 0
+ 1679 03b0 2196      		adiw r28,1
+ 1680               	.LVL169:
+ 1681 03b2 C115      		cp r28,__zero_reg__
+ 1682 03b4 A2E0      		ldi r26,2
+ 1683 03b6 DA07      		cpc r29,r26
+ 1684 03b8 01F0      		breq .+2
+ 1685 03ba 00C0      		rjmp .L113
+ 1686 03bc 00C0      		rjmp .L104
+ 1687               	.LVL170:
+ 1688               	.L96:
+ 1689               	.LBB57:
+ 803:MiiBoot.c     ****            eeprom_update_word((uint16_t *)E2END - 1, 0xFFFF);
+ 1690               		.loc 1 803 0
+ 1691 03be 6FEF      		ldi r22,lo8(-1)
+ 1692 03c0 7FEF      		ldi r23,lo8(-1)
+ 1693 03c2 8DEF      		ldi r24,lo8(-3)
+ 1694 03c4 93E0      		ldi r25,lo8(3)
+ 1695 03c6 0E94 0000 		call __eeupd_word_m328p
+ 1696               	.LVL171:
+ 1697               	.LBB55:
+ 1698               	.LBB49:
+ 687:MiiBoot.c     ****     address = 0;
+ 1699               		.loc 1 687 0
+ 1700 03ca 1092 0000 		sts address+1,__zero_reg__
+ 1701 03ce 1092 0000 		sts address,__zero_reg__
+ 686:MiiBoot.c     **** 	uint8_t* out = pagebuffer;
+ 1702               		.loc 1 686 0
+ 1703 03d2 C0E0      		ldi r28,lo8(pagebuffer)
+ 1704 03d4 D0E0      		ldi r29,hi8(pagebuffer)
+ 1705               	.LVL172:
+ 685:MiiBoot.c     ****     uint8_t num_flash_words = 0;
+ 1706               		.loc 1 685 0
+ 1707 03d6 F12C      		mov r15,__zero_reg__
+ 1708 03d8 00C0      		rjmp .L114
+ 1709               	.LBE49:
+ 1710               	.LBE55:
+ 1711               	.LBE57:
+ 1712               	.LBE59:
+ 1713               		.cfi_endproc
+ 1714               	.LFE24:
+ 1716               		.local	file
+ 1717               		.comm	file,10,1
+ 1718               		.local	FATRegionStartSec
+ 1719               		.comm	FATRegionStartSec,2,1
+ 1720               		.local	SectorsPerCluster
+ 1721               		.comm	SectorsPerCluster,1,1
+ 1722               		.local	RootDirRegionSize
+ 1723               		.comm	RootDirRegionSize,2,1
+ 1724               		.local	DataRegionStartSec
+ 1725               		.comm	DataRegionStartSec,4,1
+ 1726               		.local	RootDirRegionStartSec
+ 1727               		.comm	RootDirRegionStartSec,2,1
+ 1728               		.comm	buff,512,1
+ 1729               	.global	lastAdr
+ 1730               		.data
+ 1733               	lastAdr:
+ 1734 0000 FF        		.byte	-1
+ 1735 0001 FF        		.byte	-1
+ 1736 0002 FF        		.byte	-1
+ 1737 0003 FF        		.byte	-1
+ 1738               		.local	cmd
+ 1739               		.comm	cmd,6,1
+ 1740               		.comm	address,2,1
+ 1741               		.comm	pagebuffer,128,1
+ 1742               	.global	reset_reason
+ 1743               		.section .bss
+ 1746               	reset_reason:
+ 1747 0000 00        		.zero	1
+ 1748               	.global	app_start
+ 1751               	app_start:
+ 1752 0001 0000      		.zero	2
+ 1753               	.global	nameMatch
+ 1754               		.data
+ 1757               	nameMatch:
+ 1758 0004 4D        		.byte	77
+ 1759 0005 49        		.byte	73
+ 1760 0006 49        		.byte	73
+ 1761 0007 41        		.byte	65
+ 1762 0008 50        		.byte	80
+ 1763 0009 00        		.byte	0
+ 1764               		.text
+ 1765               	.Letext0:
+ 1766               		.file 2 "/usr/local/CrossPack-AVR-20131216/avr/include/stdint.h"
+ 1767               		.file 3 "/usr/local/CrossPack-AVR-20131216/avr/include/avr/eeprom.h"
+DEFINED SYMBOLS
+                            *ABS*:00000000 MiiBoot.c
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:2      *ABS*:0000003e __SP_H__
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:3      *ABS*:0000003d __SP_L__
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:4      *ABS*:0000003f __SREG__
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:5      *ABS*:00000000 __tmp_reg__
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:6      *ABS*:00000001 __zero_reg__
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:12     .text.spi_send_byte:00000000 spi_send_byte
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:37     .text.send_cmd:00000000 send_cmd
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1727   .bss:00000018 cmd
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:104    .text.mmc_start_read_block:00000000 mmc_start_read_block
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1733   .data:00000000 lastAdr
+                            *COM*:00000200 buff
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:251    .text.unlikely.file_read_byte:00000000 file_read_byte
+                             .bss:00000003 file
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1719   .bss:0000000f SectorsPerCluster
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1717   .bss:0000000d FATRegionStartSec
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1723   .bss:00000012 DataRegionStartSec
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:487    .text.unlikely.file_read_hex:00000000 file_read_hex
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:577    .text.UART_init:00000000 UART_init
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:598    .text.UART_put:00000000 UART_put
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:621    .text.UART_puts:00000000 UART_puts
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:678    .text.UART_newline:00000000 UART_newline
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:700    .text.UART_putnibble:00000000 UART_putnibble
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:730    .text.UART_puthex:00000000 UART_puthex
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:766    .text.UART_puthex16:00000000 UART_puthex16
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:805    .text.UART_putsP:00000000 UART_putsP
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:844    .text.UART_dumpsector:00000000 UART_dumpsector
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:979    .text.write_flash_page:00000000 write_flash_page
+                            *COM*:00000002 address
+                            *COM*:00000080 pagebuffer
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1074   .init9:00000000 main
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1746   .bss:00000000 reset_reason
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1751   .bss:00000001 app_start
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1725   .bss:00000016 RootDirRegionStartSec
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1721   .bss:00000010 RootDirRegionSize
+/var/folders/kz/z8fl_smn1c753l6q3vczbr500000gn/T//ccvUlCsX.s:1757   .data:00000004 nameMatch
+
+UNDEFINED SYMBOLS
+__eeupd_word_m328p
+__eeupd_byte_m328p
+__do_copy_data
+__do_clear_bss

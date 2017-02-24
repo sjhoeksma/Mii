@@ -1,0 +1,67 @@
+Beams
+
+Red replace 1k with 100 ?
+
+Groen Base
+
+Version 3.x
+- Rebuild MiiBeam PCB based on different led and stablize frequency
+- Check if 2 leds would boost range
+- Use only one pot for freq
+- use 2 fixed resistor for option to change programmed id / group (default one is solders other is open)
+- Rebuild all frequency to make better timing
+
+- Use 2 pull-ups 10k on SDA and SDL as specified
+- The gate should by default pull the SDA or SDL down (open is high, closed is low)
+- Check if it is possible to add EEProm
+- Internal clock
+
+- New led distance 15 mtr (Messure freq Red Device + Blue Led)
+
+Freq Calc http://houseofjeff.com/555-timer-oscillator-frequency-calculator/
+Base is 38khz
+Stap 1 pas base aan en check if distance stays 10mtr
+Stap 2 pas freq aan check 10mtr
+Verbeter base: 680pf 10k 22k 39215hz
+verbeter beat: 0.047 µF	6.8 KΩ	6.8 KΩ	0.0007 sec.	1505.0063 Hz.	66.7 %
+
+Changed to 33nf 1k and 12k ==> +2Khz and 50%
+
+
+//Validate the interrupt pin of eye
+//Increase power
+
+
+
+GATE:
+HALL ligt op vlake kant. rood zware groen, op usb einde groen naar vrije pin en ex groene pin naar rood.
+Groen Rood met 10k weerstand
+
+
+Version 4.0.
+Build new Beam
+Build new Device
+Build GSM/GRPS Bridge
+Add Wifi
+Add EEprome, remove SDA/SDL from USB and replace with Free Pin
+Add Pins for programming Wifi
+Big power supply for long range transmitter
+User 2 large cell battery in case with battery
+TODO Long Range
+Extrene step up gebruiken vanaf battery op 5v
+Soldeer 5v power again, use wire to resistor
+
+
+esp
+https://learn.adafruit.com/esp8266-temperature-slash-humidity-webserver/wiring
+Board info
+http://l0l.org.uk/2014/12/esp8266-modules-hardware-guide-gotta-catch-em-all/
+https://github.com/esp8266/esp8266-wiki/wiki/Pin-definition
+http://www.whatimade.today/esp8266-easiest-way-to-program-so-far/
+reset
+http://nerdralph.blogspot.nl/2015/04/zero-wire-auto-reset-for-esp8266arduino.html
+https://github.com/esp8266/Arduino/issues/22
+https://github.com/igrr/esptool-ck
+http://www.instructables.com/id/ESP8266-ADC-Analog-Sensors/
+https://room-15.github.io/blog/2015/03/26/esp8266-at-command-reference/
+http://l0l.org.uk/2014/12/esp8266-modules-hardware-guide-gotta-catch-em-all/

@@ -1,0 +1,114 @@
+<ion-view view-title="Settings" hide-back-button="true" ng-init="init()">
+  <ion-content>
+<ion-list>
+	<div class="item item-divider item-calm" ><b>General</b></div>
+		 <ion-item class="item item-toggle">Show Thousands
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.showThousands">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	 <ion-item class="item item-toggle">Show Removed
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.showRemoved">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	<ion-item class="item range">
+            &nbsp;Freeze ({{settings.freezeTime}} sec):&nbsp;2
+            <input type="range"  min="2" max="20" ng-model="settings.freezeTime">
+            20&nbsp;
+  </ion-item>	
+		 <ion-item class="item item-toggle" ng-if="hasPowermanagement">Display allways on
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.allwaysOn">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	 <ion-item class="item item-toggle" ng-if="expertAllowed">Expert Mode
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.expert">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	<ion-item class="item item-toggle" ng-if="settings.expert">Synchronize Data
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.uploadEnabled">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	<ion-item class="item" ng-if="settings.expert && settings.uploadEnabled">
+		<label class="item item-input">
+    <input type="text" placeholder="Username" ng-model="settings.username" >
+	  </label>
+  </ion-item>
+		<ion-item class="item" ng-if="settings.expert && settings.uploadEnabled">
+			<label class="item item-input">
+    <input  type="password" placeholder="Password" ng-model="settings.password" >
+		</label>
+  </ion-item>
+	
+	 <ion-item class="item item-toggle" ng-if="settings.expert">Rounding (none FIS)
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.rounding">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>	
+
+   <ion-item class="item item-toggle" ng-if="settings.expert">Use Userlist
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.usestartlist">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>	
+	<ion-item class="item item-toggle" ng-if="settings.expert">Show Onstart
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.showonstart">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>	
+	
+		<ion-item class="item item-toggle" ng-if="settings.expert && Mii.state>=2">Parallel mode
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.parallel">
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>	
+
+ 
+	<div class="item item-divider item-calm" ><b>Ranking</b></div>
+  <ion-radio name="rankingmodel" ng-model="settings.rankingModel" ng-value="1">Best Time</ion-radio>
+  <ion-radio name="rankingmodel" ng-model="settings.rankingModel" ng-value="2">Last Two</ion-radio>
+	<ion-radio name="rankingmodel" ng-model="settings.rankingModel" ng-value="3">Best 2</ion-radio>
+	
+	<div ng-if="settings.expert">
+		<ion-item class='item-divider item-calm item-icon-right'>
+				{{ 'MIC_SESSION' | translate:translationData}} 
+				<i class="icon">
+				   <button class="button button-positive" ng-click="addSession()" translate>MIC_ADD
+           </button>
+				 </i>	 
+			</ion-item>
+		<ion-radio ng-repeat="item in Mii.sessions"  name="sessionName" ng-model="settings.sessionName" ng-value="'{{item}}'" ng-click="editSession(item)">
+			{{item}}
+		</ion-radio>
+		
+	</div>	
+	
+	
+	<div ng-if="settings.expert && Mii.bluetoothAvailable">
+	<div class="item item-divider item-calm" ><ion-spinner ng-if="Mii.state==1 || Mii.btListState==1" class="bluetoothspinner" icon="ios"></ion-spinner><b>Connections</b></div>
+  <ion-item class="item item-toggle" >
+     Use BlueTooth 
+     <label class="toggle toggle-balanced">
+       <input type="checkbox" ng-model="settings.bluetooth" >
+       <div class="track"><div class="handle"></div></div>
+     </label>
+  </ion-item>
+	<ion-radio  ng-if="settings.bluetooth" ng-repeat="item in Mii.bluetoothList" name="bluetoothid" ng-model="settings.bluetoothid" ng-class="{ 'bluetoothactiveitem': item.active}" ng-value="'{{item.id}}'">{{item.name}}<p ng-show="item.id==Mii.settings.bluetoothid && Mii.state>=2">Device:{{Mii.deviceId}} Firmware:{{Mii.firmware}}</p></ion-radio>	
+	</div>
+	
+</ion-list>
+	
+  </ion-content>
+</ion-view>

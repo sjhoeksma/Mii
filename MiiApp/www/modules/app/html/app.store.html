@@ -1,0 +1,36 @@
+	<ion-view title="{{'APP_STORE' | translate}}">
+   <ion-content direction="y" > 
+		  <ion-list>
+			<ion-item class='item-divider item-positive item-icon-right'>
+				{{ 'APP_INSTALLED_MODULES' | translate:translationData}} 
+				<i class="icon">
+				   <button class="button button-calm" ng-click="toggleReorder()" translate>APP_REORDER
+           </button>
+				 </i>	 
+			</ion-item>
+     </ion-list>
+		 <ion-list show-reorder="showReorder">	
+			<ion-item class="item item-icon-left" ng-repeat="item in userApps()"  click-swipe long-swipe >
+				<i class="icon" >
+					  <img class="small-avatar" ng-if="item.icon" ng-src="{{item.icon}}" alt="">
+				 </i>
+            {{item.title | translate:translationData}}
+					<item-swipe-pane direction="right">
+						<button class="button button-assertive ion-trash-a" ng-click="removeApp(item.name)"  translate>FRW_REMOVE</button>
+					</item-swipe-pane>
+				 <ion-reorder-button class="ion-navicon" on-reorder="moveItem(item, $fromIndex, $toIndex)"></ion-reorder-button>
+			</ion-item>
+		 </ion-list><ion-list>
+			<ion-item class='item-divider item-positive' translate>APP_AVAILABLE_MODULES</ion-item>
+			<ion-item class="item item-icon-left " ng-repeat="item in applications() track by $index"  ng-if="!item.hidden && !AppUser.hasApp(item.name)" click-swipe long-swipe >
+				 <i class="icon" >
+					  <img class="small-avatar" ng-if="item.icon" ng-src="{{item.icon}}" alt="">
+				 </i>
+            {{item.title | translate:translationData}}
+         	<item-swipe-pane direction="left">
+						<button class="button button-balanced ion-checkmark-round" ng-click="installApp(item.name)"  translate>FRW_ADD</button>
+					</item-swipe-pane>
+				</ion-item>
+			</ion-list>	
+    </ion-content>
+  </ion-view>  

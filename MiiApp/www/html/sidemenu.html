@@ -1,0 +1,25 @@
+<ion-side-menus enable-menu-with-back-views="true" >
+	<ion-side-menu-content>
+		<ion-nav-bar class="bar-positive">
+			<ion-nav-back-button class="button-clear white-color button button-icon ion-ios-arrow-back"> </ion-nav-back-button>
+			<ion-nav-buttons side="left">
+				<button menu-toggle="left" class="button button-icon button-clear ion-navicon"><span menu-toggle="left" ng-show="Notifications.count()" class="ng-hide" ng-class="Notifications.hasUnread() ?  'red-badge' : 'green-badge' ">{{Notifications.count()}}</span> </button> 
+				<ion-spinner ng-show="$root.bgProgress" icon="ripple" class="spinner-light"></ion-spinner>
+			</ion-nav-buttons>
+			
+			<ion-nav-buttons side="secondary" ng-show="titleShow">
+					<button ng-repeat="item in titleApps track by item.state" class="button button-clear button-top-menu icon" ng-class="item.ion" ng-click="item.click(item)" ng-show="!item.hidden"><br>{{item.title | translate:translateData}}</button>
+			</ion-nav-buttons>
+		</ion-nav-bar>
+		<ion-nav-view name="menuContent" class="slide-left-right"></ion-nav-view>
+	</ion-side-menu-content>
+	<ion-side-menu side="left">
+		<ion-content>
+			<menu-tree menu-items="leftmenuItems" menu-validate="validateMenuItem"></menu-tree>
+		</ion-content>
+		<ion-footer-bar ng-show="isLoggedIn()" class="bar-positive">
+			<button ng-if="lockAllowed" class="button button-clear white-color icon-left ion-lock-combination" ui-sref="app.login" menu-close translate="FRW_LOCK"></button>
+			<button class="button button-clear white-color icon-left ion-power" ui-sref="app.logout({Logout:true})" menu-close translate="FRW_LOGOUT"></button>
+		</ion-footer-bar>
+	</ion-side-menu>
+</ion-side-menus>

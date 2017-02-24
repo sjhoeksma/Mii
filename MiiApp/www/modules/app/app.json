@@ -1,0 +1,177 @@
+{
+	"name"        : "app",
+	"autoLoad"    : true,
+	"version"     : "0.1",
+	"app" : {
+   	"title"       : "APP_SYS_TITLE",
+	  "description" : "APP_SYS_DESCRIPTION",
+		"icon"        : "app.png",
+		"hidden"      : true
+	},
+	"hasLocales"  : true,
+	"data"        : {"security":null},
+ 	"states"      : [
+		{
+		  "state": "app.login",
+		  "data": {"auth": false},
+		  "cached": false,
+			"controller": "LoginCtrl"
+		},{
+		  "state": "app.logout",
+			"url": "/login/:Logout",
+		  "data": {"auth": false},
+		  "cached": false,
+			"controller": "LoginCtrl",
+			"templateUrl": "app.login.html"
+		},{
+			"state" : "app.home",
+      "url": "/home",
+			"cached": false,
+      "controller": "HomeCtrl"
+    },{
+			"state" : "app.newpin",
+      "controller": "NewPinCtrl",
+			"data": { "auth": false}
+    },{ 	
+		  "state" : "app.firsttime",
+		  "data": { "auth": false}
+	  },{
+		 "state" : "app.store",
+		 "controller" : "StoreCtrl"
+		},{
+     "state" : "app.whatsnew",
+		 "data": { "auth": false}
+		},{
+     "state": "app.opensource"
+		},{
+     "state" : "app.about"
+		},{
+     "state" : "app.privacy"
+		},{
+    "state" : "app.feedback"
+		},{
+     "state" : "app.support"
+		},{
+     "state" : "app.remotesupport",
+	 	 "data" : {"auth": true,"security":"admin"},
+		 "templateUrl": "html/support.html"
+		},{
+		 "state" : "app.profile",
+	   "controller": "ProfileCtrl"
+	  },{
+		 "state" : "app.notifications",
+     "controller": "NotificationCtrl"
+	  },{
+     "state" : "app.settings",
+     "controller": "SettingsCtrl"
+		},{
+		 "state" : "app.webpage",
+     "url": "/webpage/:json",
+     "data": { 
+        "auth": false,
+        "online":true
+      },
+      "controller": "WebPageCtrl"
+    },{
+			"state":  "app.admin",
+      "url": "/admin/:json",
+      "data": { 
+        "auth": false,
+        "online":true,
+        "security":"admin"
+      },  
+			"templateUrl": "html/webpage.html",
+       "controller": "WebPageCtrl"
+    }
+	],
+ "scripts"     : ["app.login.js","app.newpin.js","app.home.js", "app.notification.js", "app.remotesupport.js", "app.settings.js", "app.store.js","app.webpage.js"],
+ "css"				 : [],
+ "templates"   : [],
+ "menus"       : [
+    {  "id":0,
+		   "$name": "{{AppUser.lastUserName()}}",
+       "icon": "ion-person",
+       "style": {"font-weight": "bold"}
+    }, {
+			"id": 10,
+      "name": "APP_NOTIFICATIONS",
+      "icon": "ion-radio-waves",
+      "state": "app.notifications"
+    }, {
+			"id": 15,
+      "name": "APP_STORE",
+      "icon": "ion-ios-cart",
+      "state": "app.store"
+    },
+    {
+			"id": 20,
+      "name": "APP_SERVICE",
+      "icon": "ion-android-people",
+      "items": [{ 
+        "name": "APP_FEEDBACK",
+        "icon": "ion-chatbox",
+        "state": "app.feedback",
+				"$validate": "{{ENV['feedbackEmail'] ? true : false}}"
+      },{
+        "name": "APP_REMOTE_SUPPORT",
+        "icon": "ion-monitor",
+        "state": "app.support",
+				"$validate": "{{ENV['supportPhone'] ? true : false}}"	
+      }]
+    },{ 
+			"id": 30,
+      "name": "APP_INFO", 
+      "icon": "ion-information",
+      "items": [{
+        "name": "APP_ABOUT_APP",
+        "icon": "ion-information",
+        "state": "app.about"
+      },{
+        "name": "APP_FIRST_TOUR",
+        "icon": "ion-eye",
+        "state": "app.firsttime"  
+        },{
+        "name": "APP_WHATS_NEW",
+        "icon": "ion-eye",
+        "state": "app.whatsnew" 
+        },{
+        "name": "APP_PRIVACY",
+        "icon": "ion-lock-combination",
+        "state": "app.privacy"
+      },{
+        "name": "APP_OPENSOURCE",
+        "icon": "ion-social-tux",
+        "state": "app.opensource"
+      }]
+    },
+	 {
+			"id": 100,
+      "name": "APP_ADMIN",
+			"state": "app.admin",	
+      "icon": "ion-lock-combination",
+      "items": [{
+        "name": "APP_APP_CONFIG",
+        "icon": "ion-levels",
+        "state": "app.admin",
+        "$params": "{{ {WebPage:ENV['adminConfig'],InBrowser:true} }}"
+      },{
+        "name": "APP_DOCUMENTATION",
+        "icon": "ion-document-text",
+        "state": "app.admin",
+        "$params": "{{ {WebPage:ENV['adminWiki'], InBrowser:true}  }}"
+      },{
+        "name": "APP_REMOTE_SUPPORT",
+        "icon": "ion-monitor",
+        "state": "app.remotesupport"
+      }]
+    },{ 
+			"id": 200,
+      "name": "APP_SETTINGS",
+      "icon": "ion-wrench",
+      "state": "app.settings"
+    }],
+ "settings"    : {
+	 "title"     : "APP_SETTINGS_GENERAL",
+	 "state"		 : "app.general-settings"
+ }
+}

@@ -1,0 +1,30 @@
+ <ion-view  hide-nav-bar="true" hide-back-button="true" ng-init="init()" can-swipe-back="false" enable-menu-with-back-views="false" >
+    <ion-header-bar  class="bar-positive" ng-show="showTitle" >
+     <div class="title header-item" translate="APP_HOME_TITLE"></div>
+     </ion-header-bar>
+    
+    <ion-content scroll="true" class="full-height" > 
+			<div ng-if="AppUser.hasUser()">
+      <div class="text-center ">
+      <img ng-src="{{imageLoc(AppUser.lastUserAvatar(),false)}}" class="bigger-avatar white-border-2px">
+      </div>  
+      <div class="text-center sans-pro-light" style="margin:4px;" ng-class="AppUser.loginState()< -(pinTry-1) ? 'red-color' : AppUser.loginState()< -(pinTry-2) ? 'orange-color' : ''" >{{AppUser.lastUserName()}}</div>
+      <div class="text-center sans-pro-light" style="font-size:2em"  ng-class="AppUser.loginState()< -(pinTry-1) ? 'red-color' : AppUser.loginState()< -(pinTry-2) ? 'orange-color' : ''" >{{'APP_ENTER_PIN' | translate:translateData}}
+      </div>
+      <div class="passcode" >
+       <div class="row"> 
+        <div class="col circle-box" ng-class="('pin'+pinCount)" ng-repeat="n in range(1,pinCount)" >
+          <div class="circle" ng-class="('pin'+pinCount)" ng-show="passcode.length >= n"></div>
+        </div>
+       </div>
+      </div>
+			</div>		
+		<div ng-if="!AppUser.hasUser()">
+			<button ng-if="$root.isOnline" class="button button-positive button-block" ng-click="AppUser.authenticate()">Login</button>
+			<H1 ng-if="!$root.isOnline" translate>FRM_LOGIN_OFFLINE</H1>
+		</div>	
+    </ion-content>
+
+    <ion-key-pad ng-if="AppUser.hasUser()" class="flat"  options="pinkeyboardoptions"></ion-key-pad>
+
+  </ion-view>

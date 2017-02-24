@@ -1,0 +1,48 @@
+{
+	"name"        : "app.miichrono",
+	"autoLoad"		: true,
+	"version"     : "0.1",
+	"app" : {
+   	"title"       : "MIC_TITLE",
+	  "description" : "MIC_DESCRIPTION",
+		"ion"         : "ion-medkit",
+  	"icon"        : "miichrono.png",
+		"required"    : true,
+		"header"      : false,
+		"short"       : "MIC",
+		"color"       : "red",
+		"apiToken"    : "3174665fe089b5b4927704b8156c7e53503da1603f63d370bd92f038a996d667",
+		"requirePin"  : false
+	},
+	"hasLocales"  : true,
+	"states"      : [{ 
+		 "state"     : "app.miichrono",
+		 "controller": "MiiChronoCtrl",	
+		 "tour"      : false,
+		 "online"    : false
+		},{
+		 "state"		 : "app.miichrono-settings",
+		 "url"       : "/miichrono-settings",
+		 "controller": "MiiChronoSettingsCtrl",
+			"tour"     : false,
+			"online"    : false
+		},{
+		 "state"		 : "app.miichrono-session",
+		 "url"       : "/miichrono-session/:sessionName",
+		 "controller": "MiiChronoSessionCtrl",
+			"tour"     : false,
+			"online"    : false
+		}
+		],
+ "scripts"     : ["app.miichrono.js","service.miichrono.js"],
+ "css"				 : ["digital7.css","miichrono.min.css"],
+ "templates"   : [],
+ "menus"       : [],
+ "settings"    : {
+	 "title"     : "MIC_SETTINGS",
+	 "state"		 : "app.miichrono-settings"
+ },
+ "endpoints":{		
+
+ }	
+}
